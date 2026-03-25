@@ -2,10 +2,23 @@
 -- TABLES POUR LE SYSTÈME DE SÉANCES COMPLÈTES
 -- ============================================
 
+-- Drop existing objects to ensure clean recreation
+DROP VIEW IF EXISTS sessions_detailed;
+DROP VIEW IF EXISTS tutor_statistics;
+DROP FUNCTION IF EXISTS check_session_conflicts(UUID, DATE, TIME, TIME, UUID);
+DROP FUNCTION IF EXISTS check_tutor_availability(UUID, DATE, TIME, TIME);
+DROP FUNCTION IF EXISTS count_completed_sessions(UUID, UUID);
+DROP FUNCTION IF EXISTS can_modify_session(UUID);
+DROP FUNCTION IF EXISTS generate_meeting_link(UUID);
+DROP FUNCTION IF EXISTS update_updated_at() CASCADE;
+DROP FUNCTION IF EXISTS auto_generate_meeting_link() CASCADE;
+DROP FUNCTION IF EXISTS prevent_session_conflicts() CASCADE;
+
 -- ============================================
 -- 1. TABLE DES DISPONIBILITÉS DES TUTEURS
 -- ============================================
-CREATE TABLE IF NOT EXISTS tutor_availability (
+DROP TABLE IF EXISTS tutor_availability;
+CREATE TABLE tutor_availability (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tutor_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6), -- 0 = Dimanche, 6 = Samedi
@@ -25,14 +38,15 @@ CREATE TABLE IF NOT EXISTS tutor_availability (
   )
 );
 
-CREATE INDEX idx_tutor_availability_tutor ON tutor_availability(tutor_id);
-CREATE INDEX idx_tutor_availability_date ON tutor_availability(specific_date);
-CREATE INDEX idx_tutor_availability_dow ON tutor_availability(day_of_week);
+CREATE INDEX IF NOT EXISTS idx_tutor_availability_tutor ON tutor_availability(tutor_id);
+CREATE INDEX IF NOT EXISTS idx_tutor_availability_date ON tutor_availability(specific_date);
+CREATE INDEX IF NOT EXISTS idx_tutor_availability_dow ON tutor_availability(day_of_week);
 
 -- ============================================
 -- 2. TABLE DES SÉANCES (CŒUR DU SYSTÈME)
 -- ============================================
-CREATE TABLE IF NOT EXISTS sessions (
+DROP TABLE IF EXISTS sessions CASCADE;
+CREATE TABLE sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   
   -- Relations
@@ -82,16 +96,17 @@ CREATE TABLE IF NOT EXISTS sessions (
   CHECK (tutor_id != student_id)
 );
 
-CREATE INDEX idx_sessions_student ON sessions(student_id);
-CREATE INDEX idx_sessions_tutor ON sessions(tutor_id);
-CREATE INDEX idx_sessions_date ON sessions(session_date);
-CREATE INDEX idx_sessions_status ON sessions(status);
-CREATE INDEX idx_sessions_datetime ON sessions(session_date, start_time);
+CREATE INDEX IF NOT EXISTS idx_sessions_student ON sessions(student_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_tutor ON sessions(tutor_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(session_date);
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+CREATE INDEX IF NOT EXISTS idx_sessions_datetime ON sessions(session_date, start_time);
 
 -- ============================================
 -- 3. TABLE DES COMMENTAIRES POST-SÉANCE
 -- ============================================
-CREATE TABLE IF NOT EXISTS session_comments (
+DROP TABLE IF EXISTS session_comments;
+CREATE TABLE session_comments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   author_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -114,14 +129,15 @@ CREATE TABLE IF NOT EXISTS session_comments (
   UNIQUE(session_id, author_id)
 );
 
-CREATE INDEX idx_session_comments_session ON session_comments(session_id);
-CREATE INDEX idx_session_comments_author ON session_comments(author_id);
+CREATE INDEX IF NOT EXISTS idx_session_comments_session ON session_comments(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_comments_author ON session_comments(author_id);
 
 -- ============================================
 -- 4. TABLE DES BILANS DE PROGRESSION
 -- (Uniquement à partir de la 3ème séance avec le même tuteur)
 -- ============================================
-CREATE TABLE IF NOT EXISTS progress_reports (
+DROP TABLE IF EXISTS progress_reports;
+CREATE TABLE progress_reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   
   -- Relations
@@ -162,15 +178,16 @@ CREATE TABLE IF NOT EXISTS progress_reports (
   CHECK (session_number >= 3)
 );
 
-CREATE INDEX idx_progress_reports_student ON progress_reports(student_id);
-CREATE INDEX idx_progress_reports_tutor ON progress_reports(tutor_id);
-CREATE INDEX idx_progress_reports_session ON progress_reports(session_id);
+CREATE INDEX IF NOT EXISTS idx_progress_reports_student ON progress_reports(student_id);
+CREATE INDEX IF NOT EXISTS idx_progress_reports_tutor ON progress_reports(tutor_id);
+CREATE INDEX IF NOT EXISTS idx_progress_reports_session ON progress_reports(session_id);
 
 -- ============================================
 -- 5. TABLE DES MODIFICATIONS DE SÉANCES
 -- (Historique des changements)
 -- ============================================
-CREATE TABLE IF NOT EXISTS session_modifications (
+DROP TABLE IF EXISTS session_modifications;
+CREATE TABLE session_modifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   modified_by UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -194,8 +211,8 @@ CREATE TABLE IF NOT EXISTS session_modifications (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_session_modifications_session ON session_modifications(session_id);
-CREATE INDEX idx_session_modifications_modified_by ON session_modifications(modified_by);
+CREATE INDEX IF NOT EXISTS idx_session_modifications_session ON session_modifications(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_modifications_modified_by ON session_modifications(modified_by);
 
 -- ============================================
 -- FONCTIONS SQL POUR LA LOGIQUE MÉTIER
@@ -260,7 +277,7 @@ BEGIN
     FROM tutor_availability
     WHERE tutor_id = p_tutor_id
       AND specific_date = p_session_date
-      AND is_available = true
+      AND tutor_availability.is_available = true
       AND p_start_time >= start_time
       AND p_end_time <= end_time
   ) INTO is_available;
@@ -273,7 +290,7 @@ BEGIN
       WHERE tutor_id = p_tutor_id
         AND is_recurring = true
         AND day_of_week = day_num
-        AND is_available = true
+        AND tutor_availability.is_available = true
         AND p_start_time >= start_time
         AND p_end_time <= end_time
     ) INTO is_available;
@@ -303,6 +320,61 @@ BEGIN
   RETURN session_count;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================
+-- FONCTION 3.5 : Obtenir les créneaux disponibles d'un tuteur
+-- ============================================
+DROP FUNCTION IF EXISTS get_tutor_available_slots(UUID, DATE, INTEGER);
+CREATE OR REPLACE FUNCTION get_tutor_available_slots(
+  p_tutor_id UUID,
+  p_session_date DATE,
+  p_duration_mins INTEGER
+)
+RETURNS TABLE (
+  start_time TIME,
+  end_time TIME
+)
+LANGUAGE sql
+AS $$
+WITH valid_avail AS (
+  SELECT *
+  FROM tutor_availability
+  WHERE tutor_id = p_tutor_id
+    AND is_available = true
+    AND (
+      (is_recurring = true AND specific_date IS NULL AND day_of_week = EXTRACT(DOW FROM p_session_date)::INT)
+      OR
+      (is_recurring = false AND specific_date = p_session_date)
+    )
+),
+busy_slots AS (
+  SELECT start_time, end_time
+  FROM sessions
+  WHERE tutor_id = p_tutor_id
+    AND session_date = p_session_date
+    AND status IN ('pending', 'confirmed')
+),
+all_generated AS (
+  SELECT
+    va.start_time + (gs * INTERVAL '15 minute') AS slot_start,
+    va.start_time + (gs * INTERVAL '15 minute') + (p_duration_mins * INTERVAL '1 minute') AS slot_end
+  FROM valid_avail va
+  CROSS JOIN LATERAL generate_series(
+    0,
+    GREATEST(0, EXTRACT(EPOCH FROM (va.end_time - va.start_time)) / 60 - p_duration_mins)::INT,
+    15
+  ) gs
+)
+SELECT slot_start::time AS start_time, slot_end::time AS end_time
+FROM all_generated ag
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM busy_slots b
+  WHERE b.start_time < ag.slot_end
+    AND b.end_time > ag.slot_start
+)
+ORDER BY start_time;
+$$;
 
 -- ============================================
 -- FONCTION 4 : Vérifier si modification possible (24h)
@@ -461,18 +533,21 @@ ALTER TABLE progress_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_modifications ENABLE ROW LEVEL SECURITY;
 
 -- Politique : Les tuteurs voient leurs propres disponibilités
+DROP POLICY IF EXISTS tutor_availability_select_own ON tutor_availability;
 CREATE POLICY tutor_availability_select_own ON tutor_availability
   FOR SELECT USING (
     tutor_id = auth.uid() OR
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+DROP POLICY IF EXISTS tutor_availability_insert_own ON tutor_availability;
 CREATE POLICY tutor_availability_insert_own ON tutor_availability
   FOR INSERT WITH CHECK (
     tutor_id = auth.uid() OR
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+DROP POLICY IF EXISTS tutor_availability_update_own ON tutor_availability;
 CREATE POLICY tutor_availability_update_own ON tutor_availability
   FOR UPDATE USING (
     tutor_id = auth.uid() OR
@@ -480,6 +555,7 @@ CREATE POLICY tutor_availability_update_own ON tutor_availability
   );
 
 -- Politique : Les séances sont visibles par les participants et admin
+DROP POLICY IF EXISTS sessions_select_participants ON sessions;
 CREATE POLICY sessions_select_participants ON sessions
   FOR SELECT USING (
     student_id = auth.uid() OR
@@ -487,12 +563,14 @@ CREATE POLICY sessions_select_participants ON sessions
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+DROP POLICY IF EXISTS sessions_insert_students ON sessions;
 CREATE POLICY sessions_insert_students ON sessions
   FOR INSERT WITH CHECK (
     student_id = auth.uid() OR
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+DROP POLICY IF EXISTS sessions_update_participants ON sessions;
 CREATE POLICY sessions_update_participants ON sessions
   FOR UPDATE USING (
     student_id = auth.uid() OR
@@ -501,6 +579,7 @@ CREATE POLICY sessions_update_participants ON sessions
   );
 
 -- Politique : Commentaires visibles par les participants
+DROP POLICY IF EXISTS session_comments_select_participants ON session_comments;
 CREATE POLICY session_comments_select_participants ON session_comments
   FOR SELECT USING (
     author_id = auth.uid() OR
@@ -512,6 +591,7 @@ CREATE POLICY session_comments_select_participants ON session_comments
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+DROP POLICY IF EXISTS session_comments_insert_participants ON session_comments;
 CREATE POLICY session_comments_insert_participants ON session_comments
   FOR INSERT WITH CHECK (
     author_id = auth.uid() AND
@@ -523,6 +603,7 @@ CREATE POLICY session_comments_insert_participants ON session_comments
   );
 
 -- Politique : Bilans visibles par les participants
+DROP POLICY IF EXISTS progress_reports_select_participants ON progress_reports;
 CREATE POLICY progress_reports_select_participants ON progress_reports
   FOR SELECT USING (
     student_id = auth.uid() OR
@@ -530,12 +611,14 @@ CREATE POLICY progress_reports_select_participants ON progress_reports
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+DROP POLICY IF EXISTS progress_reports_insert_tutors ON progress_reports;
 CREATE POLICY progress_reports_insert_tutors ON progress_reports
   FOR INSERT WITH CHECK (
     tutor_id = auth.uid() OR
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+DROP POLICY IF EXISTS progress_reports_update_tutors ON progress_reports;
 CREATE POLICY progress_reports_update_tutors ON progress_reports
   FOR UPDATE USING (
     tutor_id = auth.uid() OR
@@ -598,3 +681,15 @@ COMMENT ON FUNCTION generate_meeting_link IS 'Génère un lien Zoom simulé pour
 -- ============================================
 -- FIN DU SCRIPT
 -- ============================================
+
+-- ============================================
+-- DONNÉES DE TEST (Créneaux disponibles)
+-- ============================================
+INSERT INTO tutor_availability (tutor_id, day_of_week, start_time, end_time, is_recurring, is_available)
+VALUES 
+  -- Tuteur 0efde5f6-df75-4d34-96f9-07c536fcb38d - Mercredi (3) 09:00-12:00
+  ('0efde5f6-df75-4d34-96f9-07c536fcb38d', 3, '09:00', '12:00', true, true),
+  -- Tuteur 0efde5f6-df75-4d34-96f9-07c536fcb38d - Mercredi (3) 14:00-18:00
+  ('0efde5f6-df75-4d34-96f9-07c536fcb38d', 3, '14:00', '18:00', true, true),
+  -- Tuteur 0efde5f6-df75-4d34-96f9-07c536fcb38d - Jeudi (4) 10:00-16:00
+  ('0efde5f6-df75-4d34-96f9-07c536fcb38d', 4, '10:00', '16:00', true, true);

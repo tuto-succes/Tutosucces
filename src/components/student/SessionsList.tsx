@@ -9,6 +9,7 @@ import { ProgressReportForm } from '../tutor/ProgressReportForm';
 import { getMockSessions } from '../../utils/mockData';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Alert, AlertDescription } from '../ui/alert';
+import { supabase } from '../../app/core/supabase.client';
 
 interface SessionsListProps {
   userId: string;
@@ -33,15 +34,89 @@ export function SessionsList({ userId, accessToken, role, tutorName }: SessionsL
 
   async function fetchSessions() {
     try {
-      // Forcer le rechargement des données mock depuis le fichier
-      // Si vous voulez les dernières données mock, décommentez la ligne suivante :
-      // localStorage.removeItem('mockSessions');
-      
-      // Utilisation des données mock au lieu d'appels API
-      const data = await getMockSessions(userId, role);
-      setSessions(data);
+      // Récupérer les séances depuis Supabase pour cet étudiant
+      const query = supabase
+        .from('sessions')
+        .select(`
+          id,
+          subject,
+          level,
+          session_date,
+          start_time,
+          end_time,
+          status,
+          total_price,
+          meeting_link,
+          meeting_password,
+          student_notes,
+          tutor_notes,
+          student_id,
+          tutor_id,
+          created_at,
+          confirmed_at,
+          completed_at,
+          cancelled_at
+        `)
+        .order('session_date', { ascending: false });
+
+      if (role === 'tutor') {
+        query.eq('tutor_id', userId);
+      } else {
+        query.eq('student_id', userId);
+      }
+
+      const { data: dbSessions, error } = await query;
+
+      if (error) {
+        console.error('Erreur Supabase:', error);
+        throw error;
+      }
+
+      // Récupérer les noms des autres participants
+      const otherIds = [...new Set((dbSessions || []).map((s: any) =>
+        role === 'tutor' ? s.student_id : s.tutor_id
+      ))];
+      const { data: profiles } = otherIds.length > 0
+        ? await supabase.from('profiles').select('id, name, email').in('id', otherIds)
+        : { data: [] };
+      const profileMap: Record<string, any> = {};
+      (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
+
+      // Convertir le format de la base de données au format UI
+      const formattedSessions = (dbSessions || []).map((session: any) => {
+        const otherId = role === 'tutor' ? session.student_id : session.tutor_id;
+        const otherProfile = profileMap[otherId];
+        return {
+          id: session.id,
+          studentId: session.student_id,
+          tutorId: session.tutor_id,
+          studentName: role === 'tutor' ? (otherProfile?.name || 'Élève') : 'Vous',
+          tutor: {
+            name: role === 'student' ? (otherProfile?.name || 'Tuteur') : tutorName,
+            email: otherProfile?.email,
+            id: session.tutor_id
+          },
+          tutorName: role === 'student' ? (otherProfile?.name || 'Tuteur') : tutorName,
+          subject: session.subject,
+          level: session.level,
+          date: new Date(`${session.session_date}T${session.start_time}`),
+          duration: Math.round((new Date(`2000-01-01T${session.end_time}`).getTime() - new Date(`2000-01-01T${session.start_time}`).getTime()) / (1000 * 60 * 60) * 10) / 10,
+          status: session.status,
+          notes: session.student_notes,
+          tutorComment: session.tutor_notes,
+          zoomLink: session.meeting_link,
+          zoomPassword: session.meeting_password,
+          price: session.total_price,
+          createdAt: session.created_at
+        };
+      });
+
+      setSessions(formattedSessions);
     } catch (error) {
       console.error('Error fetching sessions:', error);
+      // Fallback aux données mock en cas d'erreur
+      const data = await getMockSessions(userId, role);
+      setSessions(data);
     } finally {
       setLoading(false);
     }
@@ -88,46 +163,21 @@ export function SessionsList({ userId, accessToken, role, tutorName }: SessionsL
   }
 
   // Compléter la séance sans commentaire obligatoire
-  function completeSessionWithoutComment(sessionId: string) {
-    const updatedSessions = sessions.map(s => 
-      s.id === sessionId ? { ...s, status: 'completed' } : s
-    );
-    setSessions(updatedSessions);
-    
-    // Sauvegarder dans localStorage
-    localStorage.setItem('mockSessions', JSON.stringify(updatedSessions));
+  async function completeSessionWithoutComment(sessionId: string) {
+    await updateSessionStatus(sessionId, 'completed');
   }
 
   // Compléter la séance et ouvrir le dialogue de commentaire (pour 1ère séance)
-  function completeAndAddComment(session: any) {
-    const updatedSessions = sessions.map(s => 
-      s.id === session.id ? { ...s, status: 'completed' } : s
-    );
-    setSessions(updatedSessions);
-    
-    // Sauvegarder dans localStorage
-    localStorage.setItem('mockSessions', JSON.stringify(updatedSessions));
-    
+  async function completeAndAddComment(session: any) {
+    await updateSessionStatus(session.id, 'completed');
     setShowFirstSessionDialog(false);
-    // Important: passer la session mise à jour avec le statut completed
-    const completedSession = updatedSessions.find(s => s.id === session.id);
-    setSelectedSessionForComment(completedSession);
+    setSelectedSessionForComment({ ...session, status: 'completed' });
     setSessionToComplete(null);
   }
 
   // Sauvegarder le bilan de progression et marquer la séance comme terminée
-  function handleSaveProgressReport(reportData: any) {
-    // Sauvegarder le rapport
-    const existingReports = JSON.parse(localStorage.getItem('progressReports') || '[]');
-    existingReports.push(reportData);
-    localStorage.setItem('progressReports', JSON.stringify(existingReports));
-    
-    // Marquer la séance comme terminée avec référence au rapport
-    const updatedSessions = sessions.map(s => 
-      s.id === sessionToComplete?.id ? { ...s, status: 'completed', progressReportId: reportData.id } : s
-    );
-    setSessions(updatedSessions);
-    localStorage.setItem('mockSessions', JSON.stringify(updatedSessions));
+  async function handleSaveProgressReport(_reportData: any) {
+    await updateSessionStatus(sessionToComplete?.id, 'completed');
     
     // Fermer le dialogue
     setShowProgressReportForm(false);
@@ -137,20 +187,30 @@ export function SessionsList({ userId, accessToken, role, tutorName }: SessionsL
   }
 
   async function updateSessionStatus(sessionId: string, status: string) {
-    try {
-      // Simulation de mise à jour
-      const updatedSessions = sessions.map(s => 
-        s.id === sessionId ? { ...s, status } : s
-      );
-      setSessions(updatedSessions);
-      
-      // Sauvegarder dans localStorage
-      localStorage.setItem('mockSessions', JSON.stringify(updatedSessions));
-      
-      alert('Statut mis à jour avec succès');
-    } catch (error) {
+    const { error } = await supabase
+      .from('sessions')
+      .update({ status })
+      .eq('id', sessionId);
+
+    if (error) {
       console.error('Error updating session:', error);
       alert('Erreur lors de la mise à jour');
+      return;
+    }
+
+    // Recharger la session pour récupérer meeting_link généré par le trigger
+    const { data: updated } = await supabase
+      .from('sessions')
+      .select('status, meeting_link, meeting_password, confirmed_at')
+      .eq('id', sessionId)
+      .single();
+
+    if (updated) {
+      setSessions(prev => prev.map(s =>
+        s.id === sessionId
+          ? { ...s, status: updated.status, zoomLink: updated.meeting_link, zoomPassword: updated.meeting_password }
+          : s
+      ));
     }
   }
 
@@ -240,9 +300,9 @@ export function SessionsList({ userId, accessToken, role, tutorName }: SessionsL
                           <div className="flex items-center gap-2">
                             <User className="h-4 w-4 text-gray-500" />
                             <span className="text-sm text-gray-600">
-                              {role === 'student' 
-                                ? `Tuteur: ${session.tutor?.name || session.tutorId}` 
-                                : `Élève: ${session.student?.name || session.studentId}`}
+                              {role === 'student'
+                                ? `Tuteur: ${session.tutorName}`
+                                : `Élève: ${session.studentName}`}
                             </span>
                           </div>
 
@@ -258,13 +318,27 @@ export function SessionsList({ userId, accessToken, role, tutorName }: SessionsL
                             </div>
                           )}
 
-                          {session.tutorComment && (
+                          {/* Commentaire tuteur — uniquement sur les séances terminées */}
+                          {session.status === 'completed' && (
                             <div className="bg-blue-50 border border-blue-200 p-3 rounded-md text-sm">
-                              <div className="flex items-center gap-2 mb-1">
-                                <MessageSquare className="h-4 w-4" style={{ color: '#2E5CA8' }} />
-                                <span className="font-medium" style={{ color: '#2E5CA8' }}>Commentaire du tuteur :</span>
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2">
+                                  <MessageSquare className="h-4 w-4" style={{ color: '#2E5CA8' }} />
+                                  <span className="font-medium" style={{ color: '#2E5CA8' }}>Commentaire du tuteur</span>
+                                </div>
+                                {role === 'tutor' && (
+                                  <button
+                                    onClick={() => setSelectedSessionForComment(session)}
+                                    className="text-xs text-blue-500 hover:underline"
+                                  >
+                                    {session.tutorComment ? 'Modifier' : 'Ajouter'}
+                                  </button>
+                                )}
                               </div>
-                              <p style={{ color: '#2C3E50' }}>{session.tutorComment}</p>
+                              {session.tutorComment
+                                ? <p style={{ color: '#2C3E50' }}>{session.tutorComment}</p>
+                                : <p className="text-gray-400 italic">Aucun commentaire pour l'instant.</p>
+                              }
                             </div>
                           )}
 
@@ -340,14 +414,6 @@ export function SessionsList({ userId, accessToken, role, tutorName }: SessionsL
                             </Button>
                           )}
                           
-                          {role === 'tutor' && session.status === 'completed' && (
-                            <Button
-                              size="sm"
-                              onClick={() => setSelectedSessionForComment(session)}
-                            >
-                              {session.tutorComment ? 'Modifier le commentaire' : 'Ajouter un commentaire'}
-                            </Button>
-                          )}
                         </div>
                       </div>
                     </CardContent>

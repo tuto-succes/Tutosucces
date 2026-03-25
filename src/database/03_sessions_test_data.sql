@@ -10,19 +10,21 @@
 -- ============================================
 
 -- Marie Dubois (Tutrice)
--- Disponible : Lundi-Vendredi 9h-17h, Samedi 10h-14h
+-- Disponible : Lundi-Vendredi 9h-17h, Samedi 10h-17h, Dimanche 10h-17h
 INSERT INTO tutor_availability (tutor_id, day_of_week, start_time, end_time, is_recurring, is_available)
-SELECT id, 1, '09:00', '17:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com'
+SELECT id, 0, TIME '10:00', TIME '17:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com'
 UNION ALL
-SELECT id, 2, '09:00', '17:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com'
+SELECT id, 1, TIME '09:00', TIME '17:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com'
 UNION ALL
-SELECT id, 3, '09:00', '17:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com'
+SELECT id, 2, TIME '09:00', TIME '17:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com'
 UNION ALL
-SELECT id, 4, '09:00', '17:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com'
+SELECT id, 3, TIME '09:00', TIME '17:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com'
 UNION ALL
-SELECT id, 5, '09:00', '17:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com'
+SELECT id, 4, TIME '09:00', TIME '17:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com'
 UNION ALL
-SELECT id, 6, '10:00', '14:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com';
+SELECT id, 5, TIME '09:00', TIME '17:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com'
+UNION ALL
+SELECT id, 6, TIME '10:00', TIME '17:00', true, true FROM profiles WHERE email = 'marie.dubois@tutosucces.com';
 
 -- ============================================
 -- 2. SÉANCES DE TEST (différents statuts)
@@ -50,7 +52,7 @@ BEGIN
     student_notes
   ) VALUES (
     v_lucas_id, v_marie_id, 'Mathématiques', 'Secondaire 3',
-    CURRENT_DATE + INTERVAL '3 days', '14:00', '15:00', 60,
+    CURRENT_DATE + INTERVAL '3 days', TIME '14:00', TIME '15:00', 60,
     'pending', 35.00, 35.00,
     'J''ai besoin d''aide avec les équations du second degré'
   );
@@ -66,7 +68,7 @@ BEGIN
     student_notes, confirmed_at
   ) VALUES (
     v_lucas_id, v_marie_id, 'Français', 'Secondaire 3',
-    CURRENT_DATE + INTERVAL '5 days', '10:00', '11:30', 90,
+    CURRENT_DATE + INTERVAL '5 days', TIME '10:00', TIME '11:30', 90,
     'confirmed', 35.00, 52.50, 'paid',
     'Préparation pour l''examen de la semaine prochaine',
     NOW()
@@ -90,7 +92,7 @@ BEGIN
     confirmed_at, completed_at
   ) VALUES (
     v_lucas_id, v_marie_id, 'Mathématiques', 'Secondaire 3',
-    CURRENT_DATE - INTERVAL '7 days', '14:00', '15:00', 60,
+    CURRENT_DATE - INTERVAL '7 days', TIME '14:00', TIME '15:00', 60,
     'completed', 35.00, 35.00, 'paid',
     'https://zoom.us/j/9876543210', 'xyz789',
     NOW() - INTERVAL '8 days', NOW() - INTERVAL '7 days'
@@ -117,7 +119,7 @@ BEGIN
     confirmed_at, completed_at
   ) VALUES (
     v_lucas_id, v_marie_id, 'Mathématiques', 'Secondaire 3',
-    CURRENT_DATE - INTERVAL '4 days', '14:00', '15:00', 60,
+    CURRENT_DATE - INTERVAL '4 days', TIME '14:00', TIME '15:00', 60,
     'completed', 35.00, 35.00, 'paid',
     'https://zoom.us/j/1111222233', 'def456',
     NOW() - INTERVAL '5 days', NOW() - INTERVAL '4 days'
@@ -145,7 +147,7 @@ BEGIN
     confirmed_at, completed_at
   ) VALUES (
     v_lucas_id, v_marie_id, 'Mathématiques', 'Secondaire 3',
-    CURRENT_DATE - INTERVAL '2 days', '14:00', '15:00', 60,
+    CURRENT_DATE - INTERVAL '2 days', TIME '14:00', TIME '15:00', 60,
     'completed', 35.00, 35.00, 'paid',
     'https://zoom.us/j/4444555566', 'ghi789',
     NOW() - INTERVAL '3 days', NOW() - INTERVAL '2 days'
@@ -193,7 +195,7 @@ BEGIN
     cancellation_reason, cancelled_by, cancelled_at
   ) VALUES (
     v_lucas_id, v_marie_id, 'Mathématiques', 'Secondaire 3',
-    CURRENT_DATE + INTERVAL '10 days', '14:00', '15:00', 60,
+    CURRENT_DATE + INTERVAL '10 days', TIME '14:00', TIME '15:00', 60,
     'cancelled', 35.00, 35.00, 'refunded',
     'Conflit avec un examen à l''école',
     v_lucas_id, NOW()
@@ -218,7 +220,7 @@ BEGIN
     meeting_link, meeting_password, confirmed_at
   ) VALUES (
     v_lucas_id, v_marie_id, 'Français', 'Secondaire 3',
-    CURRENT_DATE + INTERVAL '7 days', '15:00', '16:00', 60,
+    CURRENT_DATE + INTERVAL '7 days', TIME '15:00', TIME '16:00', 60,
     'confirmed', 35.00, 35.00, 'paid',
     'https://zoom.us/j/7777888899', 'jkl012',
     NOW()
@@ -234,7 +236,7 @@ BEGIN
     meeting_link, meeting_password, confirmed_at
   ) VALUES (
     v_lucas_id, v_marie_id, 'Mathématiques', 'Secondaire 3',
-    CURRENT_DATE + INTERVAL '12 hours', '10:00', '11:00', 60,
+    CURRENT_DATE + INTERVAL '12 hours', TIME '10:00', TIME '11:00', 60,
     'confirmed', 35.00, 35.00, 'paid',
     'https://zoom.us/j/9999000011', 'mno345',
     NOW() - INTERVAL '2 days'
@@ -320,7 +322,7 @@ ORDER BY s.session_date;
 -- Test 1 : Vérifier un conflit de séance (doit retourner false si conflit)
 SELECT check_session_conflicts(
   (SELECT id FROM profiles WHERE email = 'marie.dubois@tutosucces.com'),
-  CURRENT_DATE + INTERVAL '5 days',
+  (CURRENT_DATE + INTERVAL '5 days')::DATE,
   '10:30'::TIME,
   '11:00'::TIME,
   NULL
@@ -329,7 +331,7 @@ SELECT check_session_conflicts(
 -- Test 2 : Vérifier la disponibilité (doit retourner true si disponible)
 SELECT check_tutor_availability(
   (SELECT id FROM profiles WHERE email = 'marie.dubois@tutosucces.com'),
-  CURRENT_DATE + INTERVAL '8 days', -- Un lundi
+  (CURRENT_DATE + INTERVAL '8 days')::DATE, -- Un lundi
   '10:00'::TIME,
   '11:00'::TIME
 ) as est_disponible;
@@ -353,7 +355,7 @@ ORDER BY s.session_date;
 -- COMMENTAIRES FINAUX
 -- ============================================
 
-COMMENT ON SCRIPT IS '
+/*
 DONNÉES DE TEST POUR LE SYSTÈME DE SÉANCES
 
 Ce script crée :
@@ -376,4 +378,4 @@ Pour tester, connectez-vous avec :
 - Élève : lucas.tremblay@gmail.com / Etudiant123!
 - Tuteur : marie.dubois@tutosucces.com / Tuteur123!
 - Admin : admin@tutosucces.com / Admin123!
-';
+*/

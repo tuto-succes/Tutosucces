@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Alert, AlertDescription } from '../ui/alert';
-import { getMockTutors, simulateNetworkDelay, isTutorAvailable, getAllSubjects } from '../../utils/mockData';
+import { getMockTutors, simulateNetworkDelay, getAllSubjects, isTutorAvailable } from '../../utils/mockData';
+import { supabase } from '../../app/core/supabase.client';
 
 interface TutorSearchProps {
   userId: string;
@@ -49,10 +50,80 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
 
   async function fetchTutors() {
     try {
+      // Récupérer tous les tuteurs
+      const { data: tutorsData, error: tutorsError } = await supabase
+        .from('profiles')
+        .select('id, name, email, phone, avatar_url, role')
+        .eq('role', 'tutor');
+
+      if (tutorsError) throw tutorsError;
+
+      // Récupérer les disponibilités de tous les tuteurs
+      const { data: availabilitiesData, error: availError } = await supabase
+        .from('tutor_availability')
+        .select('*')
+        .eq('is_recurring', true);
+
+      if (availError) throw availError;
+
+      // Mapper les tuteurs avec leurs disponibilités
+      const tutorsWithAvailability = (tutorsData || []).map((tutor: any) => {
+        const tutorAvailabilities = (availabilitiesData || []).filter(
+          (avail: any) => avail.tutor_id === tutor.id
+        );
+
+        // Regrouper les créneaux par jour de la semaine pour le format attendu par isTutorAvailable
+        const availabilityByDay: Record<number, any> = {};
+        tutorAvailabilities.forEach((avail: any) => {
+          if (!availabilityByDay[avail.day_of_week]) {
+            availabilityByDay[avail.day_of_week] = {
+              dayOfWeek: avail.day_of_week,
+              slots: []
+            };
+          }
+          availabilityByDay[avail.day_of_week].slots.push({
+            start: avail.start_time,
+            end: avail.end_time
+          });
+        });
+
+        const availability = Object.values(availabilityByDay);
+
+        // Créer une liste lisible des jours disponibles
+        const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+        const availableDays = Array.from(
+          new Set(tutorAvailabilities.map((a: any) => dayNames[a.day_of_week]))
+        );
+
+        return {
+          id: tutor.id,
+          userId: tutor.id,
+          user: {
+            name: tutor.name,
+            email: tutor.email
+          },
+          name: tutor.name,
+          email: tutor.email,
+          phone: tutor.phone,
+          avatar: tutor.avatar_url,
+          bio: 'Tuteur Tuto-Succès',
+          subjects: ['Mathématiques', 'Français', 'Anglais'], // À obtenir d'une table tutors si elle existe
+          levels: ['Primaire', 'Secondaire 1', 'Secondaire 3'],
+          rating: 4.5,
+          reviewCount: 12,
+          rate: 35, // À obtenir d'une table tutors si elle existe
+          availability: availability,
+          availabilities: tutorAvailabilities,
+          availableDays: availableDays
+        };
+      });
+
+      setTutors(tutorsWithAvailability);
+    } catch (error) {
+      console.error('Error fetching tutors from DB:', error);
+      // Fallback aux données mock
       const data = await getMockTutors();
       setTutors(data);
-    } catch (error) {
-      console.error('Error fetching tutors:', error);
     } finally {
       setLoading(false);
     }
@@ -117,17 +188,53 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
 
     try {
       await simulateNetworkDelay();
+
+      // Parser la date et l'heure
+      const dateObj = new Date(bookingDate);
+      const sessionDate = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD format
       
-      alert('Demande de réservation envoyée avec succès!');
+      // Calculer l'heure de fin basée sur la durée
+      const startTimeDate = new Date(`2000-01-01T${bookingDate.split('T')[1]}`);
+      const endTimeDate = new Date(startTimeDate.getTime() + parseFloat(bookingDuration) * 60 * 60 * 1000);
+      const startTime = bookingDate.split('T')[1] || '14:00';
+      const endTime = endTimeDate.toTimeString().slice(0, 5); // HH:MM format
+
+      // Calculer le prix total
+      const totalPrice = (selectedTutor.rate || 35) * parseFloat(bookingDuration);
+
+      // Insertion dans la table sessions
+      const { error } = await supabase
+        .from('sessions')
+        .insert([
+          {
+            student_id: userId,
+            tutor_id: selectedTutor.id,
+            subject: bookingSubject,
+            level: 'Secondaire 3', // À demander à l'utilisateur
+            session_date: sessionDate,
+            start_time: startTime,
+            end_time: endTime,
+            duration_minutes: Math.round(parseFloat(bookingDuration) * 60),
+            status: 'pending',
+            price_per_hour: selectedTutor.rate || 35,
+            total_price: totalPrice,
+            student_notes: bookingNotes,
+            payment_status: 'paid'
+          }
+        ]);
+
+      if (error) throw error;
+      
+      alert('✅ Demande de réservation envoyée avec succès! Le tuteur recevra votre demande.');
       setSelectedTutor(null);
       setBookingDate('');
       setBookingDuration('2');
       setBookingSubject('');
       setBookingNotes('');
       setPaymentSuccess(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error booking session:', error);
-      alert('Erreur lors de la réservation');
+      alert(`❌ Erreur lors de la réservation: ${error.message || JSON.stringify(error)}`);
     }
   }
 
@@ -140,9 +247,9 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
       await simulateNetworkDelay(1000);
       setPaymentSuccess(true);
       setShowPaymentDialog(false);
-      alert('Paiement effectué avec succès! Vous pouvez maintenant confirmer votre réservation.');
+      alert('✅ Paiement effectué avec succès! Vous pouvez maintenant confirmer votre réservation.');
     } catch (error) {
-      alert('Erreur lors du paiement');
+      alert('❌ Erreur lors du paiement');
     }
   }
 
@@ -167,6 +274,7 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
     }
   }
 
+
   function formatAvailability(tutor: any): string {
     if (!tutor.availability || tutor.availability.length === 0) {
       return 'Disponibilités flexibles';
@@ -175,6 +283,35 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
     const days = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
     const availableDays = tutor.availability.map((a: any) => days[a.dayOfWeek]).join(', ');
     return availableDays;
+  }
+
+  function formatAvailabilityDetails(tutor: any): string {
+    // Priorité à la structure déjà regroupée (tutor.availability)
+    const dayBlocks = tutor.availability && tutor.availability.length > 0
+      ? tutor.availability
+      : (tutor.availabilities || []).reduce((acc: any, av: any) => {
+          const existing = acc.find((e: any) => e.dayOfWeek === av.day_of_week);
+          if (existing) {
+            existing.slots.push({ start: av.start_time, end: av.end_time });
+          } else {
+            acc.push({ dayOfWeek: av.day_of_week, slots: [{ start: av.start_time, end: av.end_time }] });
+          }
+          return acc;
+        }, []);
+
+    if (!dayBlocks || dayBlocks.length === 0) {
+      return 'Aucune disponibilité récurrente définie';
+    }
+
+    const days = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+    return dayBlocks
+      .map((dayBlock: any) => {
+        const times = dayBlock.slots
+          .map((slot: any) => `${slot.start} - ${slot.end}`)
+          .join(', ');
+        return `${days[dayBlock.dayOfWeek]}: ${times}`;
+      })
+      .join(' | ');
   }
 
   if (loading) {
@@ -360,12 +497,16 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-gray-500" />
-                  <div className="text-sm text-gray-600">
-                    {formatAvailability(tutor)}
-                  </div>
+                <Calendar className="h-4 w-4 text-gray-500" />
+                <div className="text-sm text-gray-600">
+                  {formatAvailability(tutor)}
                 </div>
               </div>
+
+              <div className="text-xs text-gray-500 mt-1">
+                {formatAvailabilityDetails(tutor)}
+              </div>
+            </div>
 
               <Dialog>
                 <DialogTrigger asChild>
@@ -450,30 +591,12 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
                       </div>
                     </div>
 
-                    {/* Vérification de disponibilité */}
-                    {bookingDate && (
-                      <Alert className={
-                        isTutorAvailable(tutor, new Date(bookingDate), parseFloat(bookingDuration))
-                          ? "bg-green-50 border-green-200"
-                          : "bg-red-50 border-red-200"
-                      }>
-                        <Clock className={`h-4 w-4 ${
-                          isTutorAvailable(tutor, new Date(bookingDate), parseFloat(bookingDuration))
-                            ? "text-green-600"
-                            : "text-red-600"
-                        }`} />
-                        <AlertDescription className={
-                          isTutorAvailable(tutor, new Date(bookingDate), parseFloat(bookingDuration))
-                            ? "text-green-700"
-                            : "text-red-700"
-                        }>
-                          {isTutorAvailable(tutor, new Date(bookingDate), parseFloat(bookingDuration))
-                            ? "✓ Le tuteur est disponible à cette date/heure"
-                            : "✗ Le tuteur n'est pas disponible à cette date/heure. Veuillez choisir un autre créneau."
-                          }
-                        </AlertDescription>
-                      </Alert>
-                    )}
+                    {/* Disponibilités hebdo direct tuteur */}
+                    <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-xs font-bold text-blue-700">Disponibilités hebdomadaires de ce tuteur</p>
+                      <p className="text-xs text-gray-700">{formatAvailabilityDetails(tutor)}</p>
+                    </div>
+
 
                     {/* Section de paiement */}
                     {!paymentSuccess ? (
@@ -497,7 +620,7 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
                         onClick={handlePayment} 
                         className="w-full" 
                         style={{ backgroundColor: '#E74C3C' }}
-                        disabled={!bookingDate || !bookingSubject || (bookingDate && !isTutorAvailable(tutor, new Date(bookingDate), parseFloat(bookingDuration)))}
+                        disabled={!bookingDate || !bookingSubject}
                       >
                         <CreditCard className="h-4 w-4 mr-2" />
                         Procéder au paiement ({(tutor.rate * parseFloat(bookingDuration)).toFixed(2)} $ CAD)
