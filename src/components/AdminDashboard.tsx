@@ -25,11 +25,19 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
   useEffect(() => {
     console.log('AdminDashboard mounted with user:', user);
     
-    if (user) {
-      // Get access token from localStorage (Supabase auth)
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        setAccessToken(token);
+    // Get access token from user object (stored by auth.login)
+    if (user?.access_token) {
+      setAccessToken(user.access_token);
+      console.log('✅ Access token récupéré');
+    } else {
+      // Fallback: essayer de récupérer depuis localStorage
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        const parsedUser = JSON.parse(storedUser);
+        if (parsedUser.access_token) {
+          setAccessToken(parsedUser.access_token);
+          console.log('✅ Access token récupéré depuis localStorage');
+        }
       }
     }
   }, [user]);

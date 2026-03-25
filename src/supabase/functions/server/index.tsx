@@ -195,6 +195,86 @@ app.post("/make-server-385c5805/create-user", async (c) => {
 });
 
 // ============================================================================
+// CREATE TEST USERS (creates all test users at once)
+// ============================================================================
+
+app.post("/make-server-385c5805/create-test-users", async (c) => {
+  try {
+    console.log('🧪 Creating test users...');
+
+    const testUsers = [
+      { email: 'admin@tutosucces.com', password: 'Admin123!', name: 'Administrateur B&D', role: 'admin' },
+      { email: 'marie.dubois@tutosucces.com', password: 'Tuteur123!', name: 'Marie Dubois', role: 'tutor' },
+      { email: 'jean.martin@tutosucces.com', password: 'Tuteur123!', name: 'Jean Martin', role: 'tutor' },
+      { email: 'sophie.bernard@tutosucces.com', password: 'Tuteur123!', name: 'Sophie Bernard', role: 'tutor' },
+      { email: 'lucas.tremblay@gmail.com', password: 'Etudiant123!', name: 'Lucas Tremblay', role: 'student' },
+      { email: 'emma.gagnon@gmail.com', password: 'Etudiant123!', name: 'Emma Gagnon', role: 'student' },
+      { email: 'parent.tremblay@gmail.com', password: 'Parent123!', name: 'Pierre Tremblay', role: 'parent' },
+      { email: 'parent.gagnon@gmail.com', password: 'Parent123!', name: 'Isabelle Gagnon', role: 'parent' },
+    ];
+
+    const results = [];
+    const errors = [];
+
+    for (const user of testUsers) {
+      try {
+        // 1. Create user in Supabase Auth
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+          email: user.email,
+          password: user.password,
+          user_metadata: { name: user.name },
+          email_confirm: true
+        });
+
+        if (authError) {
+          errors.push({ email: user.email, error: authError.message });
+          continue;
+        }
+
+        // 2. Create profile in database
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          })
+          .select()
+          .single();
+
+        if (profileError) {
+          errors.push({ email: user.email, error: profileError.message });
+          continue;
+        }
+
+        results.push({ 
+          email: user.email, 
+          role: user.role, 
+          id: authData.user.id,
+          success: true 
+        });
+        console.log('✅ Created:', user.email);
+
+      } catch (err: any) {
+        errors.push({ email: user.email, error: err.message });
+      }
+    }
+
+    return c.json({
+      success: true,
+      message: `Created ${results.length} users`,
+      results,
+      errors: errors.length > 0 ? errors : undefined
+    });
+
+  } catch (error: any) {
+    console.error('❌ Create test users error:', error);
+    return c.json({ error: 'Failed to create test users: ' + error.message }, 500);
+  }
+});
+
+// ============================================================================
 // START SERVER
 // ============================================================================
 
@@ -203,5 +283,6 @@ console.log('📍 Health check: /make-server-385c5805/health');
 console.log('🔐 Login: /make-server-385c5805/login');
 console.log('👤 Profile: /make-server-385c5805/profile');
 console.log('➕ Create User: /make-server-385c5805/create-user');
+console.log('🧪 Create Test Users: /make-server-385c5805/create-test-users');
 
 Deno.serve(app.fetch);

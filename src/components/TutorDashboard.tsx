@@ -26,11 +26,19 @@ export function TutorDashboard({ user, onLogout }: TutorDashboardProps) {
   useEffect(() => {
     console.log('TutorDashboard mounted with user:', user);
     
-    // Get access token from localStorage (Supabase auth)
-    if (user) {
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        setAccessToken(token);
+    // Get access token from user object (stored by auth.login)
+    if (user?.access_token) {
+      setAccessToken(user.access_token);
+      console.log('✅ Access token récupéré');
+    } else {
+      // Fallback: essayer de récupérer depuis localStorage
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        const parsedUser = JSON.parse(storedUser);
+        if (parsedUser.access_token) {
+          setAccessToken(parsedUser.access_token);
+          console.log('✅ Access token récupéré depuis localStorage');
+        }
       }
     }
   }, [user]);
@@ -74,7 +82,30 @@ export function TutorDashboard({ user, onLogout }: TutorDashboardProps) {
   }
 
   if (!accessToken) {
-    return <div className="text-center py-8">Chargement...</div>;
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-lg shadow-lg max-w-md text-center">
+          <div className="text-blue-500 text-5xl mb-4">🔄</div>
+          <h2 className="text-2xl font-bold mb-4" style={{ color: '#2C3E50' }}>
+            Chargement de votre espace tuteur...
+          </h2>
+          <p className="text-gray-600 mb-2">
+            Récupération de votre token d'accès
+          </p>
+          <p className="text-xs text-gray-500 mt-4">
+            User: {user?.email || 'Non défini'}<br/>
+            Token présent: {user?.access_token ? 'Oui' : 'Non'}
+          </p>
+          <Button
+            onClick={onLogout}
+            variant="outline"
+            className="mt-6"
+          >
+            Retour à la connexion
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (

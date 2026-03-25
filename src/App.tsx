@@ -5,6 +5,7 @@ import { StudentDashboard } from './components/StudentDashboard';
 import { TutorDashboard } from './components/TutorDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
 import { ServerDiagnostic } from './components/ServerDiagnostic';
+import { DatabaseSetup } from './components/DatabaseSetup';
 import { PolitiqueConfidentialite } from './components/PolitiqueConfidentialite';
 import { PolitiqueAnnulation } from './components/PolitiqueAnnulation';
 import { NotreApproche } from './components/NotreApproche';
@@ -15,15 +16,22 @@ import { TutorRegistrationPage } from './components/TutorRegistrationPage';
 import { StudentRegistrationPage } from './components/StudentRegistrationPage';
 import { SimpleContactPage } from './components/SimpleContactPage';
 import { DiagnosticPage } from './components/DiagnosticPage';
-import { auth } from './utils/api';
+import { auth } from './utils/supabase-client';
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<'home' | 'login' | 'dashboard' | 'confidentialite' | 'annulation' | 'approche' | 'equipe' | 'termes' | 'contact' | 'inscription' | 'inscription-eleve' | 'contact-simple' | 'diagnostic' | 'server-diagnostic'>('home');
+  const [currentPage, setCurrentPage] = useState<'home' | 'login' | 'dashboard' | 'confidentialite' | 'annulation' | 'approche' | 'equipe' | 'termes' | 'contact' | 'inscription' | 'inscription-eleve' | 'contact-simple' | 'diagnostic' | 'server-diagnostic' | 'db-setup'>('home');
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
 
   // Check for existing session on mount
   useEffect(() => {
+    // Check if URL contains ?setup=true for database setup
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('setup') === 'true') {
+      setCurrentPage('db-setup');
+      return;
+    }
+    
     checkSession();
   }, []);
 
@@ -162,6 +170,11 @@ export default function App() {
 
   if (currentPage === 'contact-simple') {
     return <SimpleContactPage onBack={() => setCurrentPage('home')} />;
+  }
+
+  // Database Setup (temporary for initial setup)
+  if (currentPage === 'db-setup') {
+    return <DatabaseSetup />;
   }
 
   // Dashboard

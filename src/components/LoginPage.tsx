@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import logoImg from 'figma:asset/bf7daf7f4d90880ea5fa593b28754dac8a736020.png';
-import { auth } from '../utils/api';
+import { auth } from '../utils/supabase-client';
 
 interface LoginPageProps {
   onLogin: (email: string, password: string) => void;
@@ -28,17 +28,19 @@ export function LoginPage({ onLogin, onBack, onNavigateToTutorRegistration, onNa
     
     try {
       // Use Supabase authentication
-      const data = await auth.login(email, password);
+      const userData = await auth.login(email, password);
+      
+      console.log('✅ Utilisateur connecté:', userData);
       
       // Si c'est un admin, on passe directement la vérification de rôle
-      if (data.user.role === 'admin') {
+      if (userData.role === 'admin') {
         onLogin(email, password);
         return;
       }
       
       // Verify role matches selection (optional, but good UX)
-      if (selectedRole && data.user.role !== selectedRole) {
-        setError(`Ce compte est enregistré comme ${data.user.role === 'student' ? 'Élève' : 'Tuteur'}. Veuillez sélectionner le bon profil.`);
+      if (selectedRole && userData.role !== selectedRole) {
+        setError(`Ce compte est enregistré comme ${userData.role === 'student' ? 'Élève' : 'Tuteur'}. Veuillez sélectionner le bon profil.`);
         setIsLoading(false);
         return;
       }

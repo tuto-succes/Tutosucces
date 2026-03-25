@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, CheckCircle, XCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
-import { healthCheck } from '../utils/api';
+import { healthCheck } from '../utils/supabase-client';
 import { projectId } from '../utils/supabase/info';
 
 interface ServerDiagnosticProps {
