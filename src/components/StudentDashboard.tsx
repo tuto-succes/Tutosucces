@@ -15,11 +15,10 @@ import logoImg from 'figma:asset/bf7daf7f4d90880ea5fa593b28754dac8a736020.png';
 
 interface StudentDashboardProps {
   user: any;
-  profile: any;
   onLogout: () => void;
 }
 
-export function StudentDashboard({ user, profile, onLogout }: StudentDashboardProps) {
+export function StudentDashboard({ user, onLogout }: StudentDashboardProps) {
   const [accessToken, setAccessToken] = useState<string>('');
   const [activeTab, setActiveTab] = useState('search');
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -27,18 +26,13 @@ export function StudentDashboard({ user, profile, onLogout }: StudentDashboardPr
   useEffect(() => {
     console.log('StudentDashboard mounted with user:', user);
     
-    // Mode mock - pas besoin de listener auth
+    // Get access token from localStorage (Supabase auth)
     if (user) {
-      const mockToken = localStorage.getItem('mockAuth');
-      if (mockToken) {
-        const { token } = JSON.parse(mockToken);
+      const token = localStorage.getItem('access_token');
+      if (token) {
         setAccessToken(token);
       }
     }
-    
-    return () => {
-      // Cleanup si nécessaire
-    };
   }, [user]);
 
   async function getValidAccessToken() {
@@ -99,7 +93,7 @@ export function StudentDashboard({ user, profile, onLogout }: StudentDashboardPr
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <User className="h-5 w-5" style={{ color: '#7F8C8D' }} />
-                <span className="text-sm font-medium" style={{ color: '#2C3E50' }}>{profile.name}</span>
+                <span className="text-sm font-medium" style={{ color: '#2C3E50' }}>{user.name}</span>
               </div>
               <Button 
                 variant="ghost" 
@@ -119,7 +113,7 @@ export function StudentDashboard({ user, profile, onLogout }: StudentDashboardPr
         {/* Welcome Section */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold mb-2" style={{ color: '#2C3E50' }}>
-            Bienvenue, {profile.name}
+            Bienvenue, {user.name}
           </h2>
           <p style={{ color: '#7F8C8D' }}>
             Trouvez des tuteurs et gérez vos cours depuis votre tableau de bord
@@ -182,9 +176,9 @@ export function StudentDashboard({ user, profile, onLogout }: StudentDashboardPr
           <TabsContent value="tax-receipts">
             <StudentTaxReceipts 
               studentId={user.id} 
-              studentName={profile.name}
-              parentName={profile.parentName || 'Parent de ' + profile.name}
-              parentEmail={profile.parentEmail || profile.email}
+              studentName={user.name}
+              parentName={user.parentName || 'Parent de ' + user.name}
+              parentEmail={user.parentEmail || user.email}
             />
           </TabsContent>
 

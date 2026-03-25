@@ -138,63 +138,6 @@ app.get("/make-server-385c5805/profile", async (c) => {
 });
 
 // ============================================================================
-// CREATE USER (admin only)
-// ============================================================================
-
-app.post("/make-server-385c5805/create-user", async (c) => {
-  try {
-    const { email, password, name, role } = await c.req.json();
-    
-    console.log('👤 Creating user:', email, 'with role:', role);
-
-    // 1. Create user in Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      user_metadata: { name },
-      // Automatically confirm the user's email since an email server hasn't been configured.
-      email_confirm: true
-    });
-
-    if (authError) {
-      console.error('❌ Auth creation error:', authError.message);
-      return c.json({ error: 'Failed to create user: ' + authError.message }, 400);
-    }
-
-    console.log('✅ Auth user created:', authData.user.id);
-
-    // 2. Create profile in database
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .insert({
-        id: authData.user.id,
-        email,
-        name,
-        role,
-        created_at: new Date().toISOString()
-      })
-      .select()
-      .single();
-
-    if (profileError) {
-      console.error('❌ Profile creation error:', profileError.message);
-      return c.json({ error: 'Failed to create profile: ' + profileError.message }, 400);
-    }
-
-    console.log('✅ Profile created for:', email);
-
-    return c.json({ 
-      success: true,
-      user: profile
-    });
-
-  } catch (error: any) {
-    console.error('❌ Create user route error:', error);
-    return c.json({ error: 'Failed to create user: ' + error.message }, 500);
-  }
-});
-
-// ============================================================================
 // START SERVER
 // ============================================================================
 
@@ -202,6 +145,5 @@ console.log('🚀 Server starting...');
 console.log('📍 Health check: /make-server-385c5805/health');
 console.log('🔐 Login: /make-server-385c5805/login');
 console.log('👤 Profile: /make-server-385c5805/profile');
-console.log('➕ Create User: /make-server-385c5805/create-user');
 
 Deno.serve(app.fetch);

@@ -10,15 +10,15 @@ import { AdminContactMessagesPage } from './AdminContactMessagesPage';
 import { AdminSchedulePage } from './AdminSchedulePage';
 import { AdminInvoicesPage } from './AdminInvoicesPage';
 import { AdminTaxReceipts } from './admin/AdminTaxReceipts';
+import { CreateTestAccounts } from './CreateTestAccounts';
 import logoImg from 'figma:asset/bf7daf7f4d90880ea5fa593b28754dac8a736020.png';
 
 interface AdminDashboardProps {
   user: any;
-  profile: any;
   onLogout: () => void;
 }
 
-export function AdminDashboard({ user, profile, onLogout }: AdminDashboardProps) {
+export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
   const [accessToken, setAccessToken] = useState<string>('');
   const [activeTab, setActiveTab] = useState('stats');
 
@@ -26,9 +26,9 @@ export function AdminDashboard({ user, profile, onLogout }: AdminDashboardProps)
     console.log('AdminDashboard mounted with user:', user);
     
     if (user) {
-      const mockToken = localStorage.getItem('mockAuth');
-      if (mockToken) {
-        const { token } = JSON.parse(mockToken);
+      // Get access token from localStorage (Supabase auth)
+      const token = localStorage.getItem('access_token');
+      if (token) {
         setAccessToken(token);
       }
     }
@@ -54,7 +54,7 @@ export function AdminDashboard({ user, profile, onLogout }: AdminDashboardProps)
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <User className="h-5 w-5" style={{ color: '#7F8C8D' }} />
-                <span className="text-sm font-medium" style={{ color: '#2C3E50' }}>{profile.name}</span>
+                <span className="text-sm font-medium" style={{ color: '#2C3E50' }}>{user.name}</span>
               </div>
               <Button 
                 variant="ghost" 

@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import logoImg from 'figma:asset/bf7daf7f4d90880ea5fa593b28754dac8a736020.png';
+import { auth } from '../utils/api';
 
 interface LoginPageProps {
   onLogin: (email: string, password: string) => void;
@@ -17,37 +18,49 @@ export function LoginPage({ onLogin, onBack, onNavigateToTutorRegistration, onNa
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showDiagnosticLink, setShowDiagnosticLink] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
+    setError('');
     
-    // Simulation de connexion simple sans base de données
-    // Comptes de démonstration
-    const demoAccounts = [
-      { email: 'eleve@demo.com', password: 'demo123', role: 'student' },
-      { email: 'tuteur@demo.com', password: 'demo123', role: 'tutor' },
-      { email: 'admin@demo.com', password: 'admin123', role: 'admin' }
-    ];
-
-    const account = demoAccounts.find(acc => acc.email === email && acc.password === password);
-    
-    if (account) {
-      // Créer un token simulé
-      const mockToken = 'mock-token-' + Math.random().toString(36).substring(7);
-      const mockUser = {
-        id: account.role + '-1',
-        email: email,
-        role: account.role
-      };
+    try {
+      // Use Supabase authentication
+      const data = await auth.login(email, password);
       
-      // Stocker dans localStorage pour simulation
-      localStorage.setItem('mockAuth', JSON.stringify({ user: mockUser, token: mockToken }));
+      // Si c'est un admin, on passe directement la vérification de rôle
+      if (data.user.role === 'admin') {
+        onLogin(email, password);
+        return;
+      }
       
-      // Appeler onLogin pour continuer
+      // Verify role matches selection (optional, but good UX)
+      if (selectedRole && data.user.role !== selectedRole) {
+        setError(`Ce compte est enregistré comme ${data.user.role === 'student' ? 'Élève' : 'Tuteur'}. Veuillez sélectionner le bon profil.`);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Call onLogin to update app state
       onLogin(email, password);
-    } else {
-      alert('Connexion échouée. Utilisez:\nÉlève: eleve@demo.com / demo123\nTuteur: tuteur@demo.com / demo123');
+    } catch (err: any) {
+      console.error('Login error:', err);
+      
+      // More specific error messages
+      if (err.message.includes('Impossible de contacter le serveur')) {
+        setError('⚠️ Le serveur backend n\'est pas accessible. Vérifiez que le serveur Supabase Edge Function est déployé.');
+      } else if (err.message.includes('Invalid credentials')) {
+        setError('❌ Email ou mot de passe incorrect. Vérifiez vos identifiants.');
+      } else if (err.message.includes('Profile not found')) {
+        setError('❌ Profil utilisateur introuvable. Assurez-vous que les données de test sont insérées dans la base de données.');
+      } else {
+        setError(`Connexion échouée : ${err.message}`);
+      }
+      
       setShowDiagnosticLink(true);
+      setIsLoading(false);
     }
   };
 
@@ -131,6 +144,19 @@ export function LoginPage({ onLogin, onBack, onNavigateToTutorRegistration, onNa
               >
                 Devenir tuteur
               </Button>
+            </div>
+
+            {/* Connexion Admin */}
+            <div className="mt-4 text-center">
+              <button
+                onClick={() => {
+                  setSelectedRole('student'); // On utilise student comme placeholder pour admin
+                  setEmail('admin@test.com');
+                }}
+                className="text-sm text-white/60 hover:text-white hover:underline transition-colors"
+              >
+                Accès administrateur
+              </button>
             </div>
           </div>
         </div>
@@ -264,16 +290,33 @@ export function LoginPage({ onLogin, onBack, onNavigateToTutorRegistration, onNa
                 />
               </div>
 
+              {/* Error message */}
+              {error && (
+                <div 
+                  className="p-4 rounded-lg border-2"
+                  style={{ 
+                    backgroundColor: '#FFEBEE',
+                    borderColor: '#EF5350'
+                  }}
+                >
+                  <p className="text-sm" style={{ color: '#C62828' }}>
+                    {error}
+                  </p>
+                </div>
+              )}
+
               <Button 
                 type="submit" 
+                disabled={isLoading}
                 className="w-full h-12 text-lg font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
                 style={{ 
-                  backgroundColor: selectedRole === 'student' ? '#2E5CA8' : '#E74C3C'
+                  backgroundColor: selectedRole === 'student' ? '#2E5CA8' : '#E74C3C',
+                  opacity: isLoading ? 0.7 : 1
                 }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = selectedRole === 'student' ? '#1E4A88' : '#C0392B'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = selectedRole === 'student' ? '#2E5CA8' : '#E74C3C'}
+                onMouseOver={(e) => !isLoading && (e.currentTarget.style.backgroundColor = selectedRole === 'student' ? '#1E4A88' : '#C0392B')}
+                onMouseOut={(e) => !isLoading && (e.currentTarget.style.backgroundColor = selectedRole === 'student' ? '#2E5CA8' : '#E74C3C')}
               >
-                Se connecter
+                {isLoading ? 'Connexion en cours...' : 'Se connecter'}
               </Button>
             </form>
 

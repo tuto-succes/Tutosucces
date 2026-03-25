@@ -15,11 +15,10 @@ import logoImg from 'figma:asset/bf7daf7f4d90880ea5fa593b28754dac8a736020.png';
 
 interface TutorDashboardProps {
   user: any;
-  profile: any;
   onLogout: () => void;
 }
 
-export function TutorDashboard({ user, profile, onLogout }: TutorDashboardProps) {
+export function TutorDashboard({ user, onLogout }: TutorDashboardProps) {
   const [accessToken, setAccessToken] = useState<string>('');
   const [activeTab, setActiveTab] = useState('sessions');
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -27,18 +26,13 @@ export function TutorDashboard({ user, profile, onLogout }: TutorDashboardProps)
   useEffect(() => {
     console.log('TutorDashboard mounted with user:', user);
     
-    // Mode mock - pas besoin de listener auth
+    // Get access token from localStorage (Supabase auth)
     if (user) {
-      const mockToken = localStorage.getItem('mockAuth');
-      if (mockToken) {
-        const { token } = JSON.parse(mockToken);
+      const token = localStorage.getItem('access_token');
+      if (token) {
         setAccessToken(token);
       }
     }
-    
-    return () => {
-      // Cleanup si nécessaire
-    };
   }, [user]);
 
   async function getValidAccessToken() {
@@ -99,7 +93,7 @@ export function TutorDashboard({ user, profile, onLogout }: TutorDashboardProps)
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <User className="h-5 w-5" style={{ color: '#7F8C8D' }} />
-                <span className="text-sm font-medium" style={{ color: '#2C3E50' }}>{profile.name}</span>
+                <span className="text-sm font-medium" style={{ color: '#2C3E50' }}>{user.name}</span>
               </div>
               <Button 
                 variant="ghost" 
@@ -119,7 +113,7 @@ export function TutorDashboard({ user, profile, onLogout }: TutorDashboardProps)
         {/* Welcome Section */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold mb-2" style={{ color: '#2C3E50' }}>
-            Bonjour, {profile.name}
+            Bonjour, {user.name}
           </h2>
           <p style={{ color: '#7F8C8D' }}>
             Gérez vos séances, communiquez avec vos élèves et suivez vos revenus
@@ -156,11 +150,11 @@ export function TutorDashboard({ user, profile, onLogout }: TutorDashboardProps)
           </TabsList>
 
           <TabsContent value="sessions">
-            <SessionsList userId={user.id} accessToken={accessToken} role="tutor" tutorName={profile.name} />
+            <SessionsList userId={user.id} accessToken={accessToken} role="tutor" tutorName={user.name} />
           </TabsContent>
 
           <TabsContent value="bilans">
-            <TutorProgressReports tutorId={user.id} tutorName={profile.name} />
+            <TutorProgressReports tutorId={user.id} tutorName={user.name} />
           </TabsContent>
 
           <TabsContent value="messages">
@@ -172,11 +166,11 @@ export function TutorDashboard({ user, profile, onLogout }: TutorDashboardProps)
           </TabsContent>
 
           <TabsContent value="tax-receipts">
-            <TutorTaxReceipts tutorId={user.id} tutorName={profile.name} tutorEmail={profile.email || user.email} />
+            <TutorTaxReceipts tutorId={user.id} tutorName={user.name} tutorEmail={user.email} />
           </TabsContent>
 
           <TabsContent value="profile">
-            <TutorProfile userId={user.id} accessToken={accessToken} profile={profile} />
+            <TutorProfile userId={user.id} accessToken={accessToken} profile={user} />
           </TabsContent>
         </Tabs>
       </div>
