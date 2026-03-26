@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Star, MapPin, Calendar, Clock, BookOpen, CreditCard, CalendarClock } from 'lucide-react';
+import { Search, Star, MapPin, Calendar, Clock, BookOpen, CalendarClock } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -32,11 +32,10 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
   
   const [selectedTutor, setSelectedTutor] = useState<any>(null);
   const [bookingDate, setBookingDate] = useState('');
+  const [bookingTime, setBookingTime] = useState('');
   const [bookingDuration, setBookingDuration] = useState('2');
   const [bookingSubject, setBookingSubject] = useState('');
   const [bookingNotes, setBookingNotes] = useState('');
-  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
 
   const availableSubjects = getAllSubjects();
 
@@ -73,6 +72,19 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
         );
 
         // Regrouper les créneaux par jour de la semaine pour le format attendu par isTutorAvailable
+        const savedTutorProfileRaw = localStorage.getItem(`mockTutorProfile:${tutor.id}`) || localStorage.getItem('mockTutorProfile');
+        let savedTutorProfile: any = null;
+        if (savedTutorProfileRaw) {
+          try {
+            const parsedProfile = JSON.parse(savedTutorProfileRaw);
+            if (parsedProfile.id === tutor.id) {
+              savedTutorProfile = parsedProfile;
+            }
+          } catch (storageError) {
+            console.error('Error parsing tutor profile from storage:', storageError);
+          }
+        }
+
         const availabilityByDay: Record<number, any> = {};
         tutorAvailabilities.forEach((avail: any) => {
           if (!availabilityByDay[avail.day_of_week]) {
@@ -106,19 +118,20 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
           email: tutor.email,
           phone: tutor.phone,
           avatar: tutor.avatar_url,
-          bio: 'Tuteur Tuto-Succès',
-          subjects: ['Mathématiques', 'Français', 'Anglais'], // À obtenir d'une table tutors si elle existe
-          levels: ['Primaire', 'Secondaire 1', 'Secondaire 3'],
+          bio: savedTutorProfile?.bio || 'Tuteur Tuto-Succes',
+          subjects: savedTutorProfile?.subjects?.length ? savedTutorProfile.subjects : ['Mathématiques', 'Français', 'Anglais'],
+          levels: savedTutorProfile?.levels?.length ? savedTutorProfile.levels : ['Primaire', 'Secondaire 1', 'Secondaire 3'],
           rating: 4.5,
           reviewCount: 12,
-          rate: 35, // À obtenir d'une table tutors si elle existe
+          rate: savedTutorProfile?.rate || 35,
+          active: savedTutorProfile?.active ?? true,
           availability: availability,
           availabilities: tutorAvailabilities,
           availableDays: availableDays
         };
       });
 
-      setTutors(tutorsWithAvailability);
+      setTutors(tutorsWithAvailability.filter((tutor: any) => tutor.active !== false));
     } catch (error) {
       console.error('Error fetching tutors from DB:', error);
       // Fallback aux données mock
@@ -169,8 +182,8 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
   }
 
   async function handleBookSession() {
-    if (!selectedTutor || !bookingDate || !bookingSubject) {
-      alert('Veuillez remplir tous les champs obligatoires (date/heure et matière)');
+    if (!selectedTutor || !bookingDate || !bookingTime || !bookingSubject) {
+      alert('Veuillez remplir tous les champs obligatoires (date, créneau et matière)');
       return;
     }
 
@@ -180,23 +193,15 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
       return;
     }
 
-    // Vérifier si le paiement a été effectué
-    if (!paymentSuccess) {
-      alert('Veuillez effectuer le paiement avant de confirmer la réservation');
-      return;
-    }
-
     try {
       await simulateNetworkDelay();
 
-      // Parser la date et l'heure
-      const dateObj = new Date(bookingDate);
-      const sessionDate = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD format
+      const sessionDate = bookingDate;
       
       // Calculer l'heure de fin basée sur la durée
-      const startTimeDate = new Date(`2000-01-01T${bookingDate.split('T')[1]}`);
+      const startTimeDate = new Date(`2000-01-01T${bookingTime}`);
       const endTimeDate = new Date(startTimeDate.getTime() + parseFloat(bookingDuration) * 60 * 60 * 1000);
-      const startTime = bookingDate.split('T')[1] || '14:00';
+      const startTime = bookingTime;
       const endTime = endTimeDate.toTimeString().slice(0, 5); // HH:MM format
 
       // Calculer le prix total
@@ -219,50 +224,36 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
             price_per_hour: selectedTutor.rate || 35,
             total_price: totalPrice,
             student_notes: bookingNotes,
-            payment_status: 'paid'
+            payment_status: 'pending'
           }
         ]);
 
       if (error) throw error;
       
-      alert('✅ Demande de réservation envoyée avec succès! Le tuteur recevra votre demande.');
+      alert('Demande de réservation envoyée avec succès. Le paiement sera demandé après la séance, une fois marquée terminée par le tuteur.');
       setSelectedTutor(null);
       setBookingDate('');
+      setBookingTime('');
       setBookingDuration('2');
       setBookingSubject('');
       setBookingNotes('');
-      setPaymentSuccess(false);
     } catch (error: any) {
       console.error('Error booking session:', error);
       alert(`❌ Erreur lors de la réservation: ${error.message || JSON.stringify(error)}`);
     }
   }
 
-  async function handlePayment() {
-    setShowPaymentDialog(true);
-  }
-
-  async function processPayment() {
-    try {
-      await simulateNetworkDelay(1000);
-      setPaymentSuccess(true);
-      setShowPaymentDialog(false);
-      alert('✅ Paiement effectué avec succès! Vous pouvez maintenant confirmer votre réservation.');
-    } catch (error) {
-      alert('❌ Erreur lors du paiement');
-    }
-  }
-
   function handleSelectTutor(tutor: any) {
     setSelectedTutor(tutor);
-    setPaymentSuccess(false);
     
     // Pré-remplir la date de réservation si l'utilisateur a fait une recherche par date/heure
     if (searchDate && searchTime) {
-      setBookingDate(`${searchDate}T${searchTime}`);
+      setBookingDate(searchDate);
+      setBookingTime(searchTime);
       setBookingDuration(searchDuration);
     } else {
       setBookingDate('');
+      setBookingTime('');
       setBookingDuration('2');
     }
     
@@ -274,6 +265,53 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
     }
   }
 
+  function buildBookingSlots(tutor: any, date: string, duration: string): string[] {
+    if (!tutor || !date) {
+      return [];
+    }
+
+    const [year, month, day] = date.split('-').map(Number);
+    const selectedDate = new Date(year, month - 1, day);
+    const dayOfWeek = selectedDate.getDay();
+    const durationMinutes = Math.round(parseFloat(duration) * 60);
+    const dayBlocks = tutor.availability?.filter((block: any) => block.dayOfWeek === dayOfWeek) || [];
+    const generatedSlots: string[] = [];
+
+    dayBlocks.forEach((dayBlock: any) => {
+      (dayBlock.slots || []).forEach((slot: any) => {
+        const [startHour, startMinute] = slot.start.split(':').map(Number);
+        const [endHour, endMinute] = slot.end.split(':').map(Number);
+        const startTotalMinutes = startHour * 60 + startMinute;
+        const endTotalMinutes = endHour * 60 + endMinute;
+
+        let current = startTotalMinutes;
+        while (current + durationMinutes <= endTotalMinutes) {
+          const hours = String(Math.floor(current / 60)).padStart(2, '0');
+          const minutes = String(current % 60).padStart(2, '0');
+          generatedSlots.push(`${hours}:${minutes}`);
+          current += 60;
+        }
+      });
+    });
+
+    return Array.from(new Set(generatedSlots)).sort();
+  }
+
+  function formatSlotLabel(time: string, duration: string): string {
+    const [hours, minutes] = time.split(':').map(Number);
+    const startDate = new Date(2000, 0, 1, hours, minutes);
+    const endDate = new Date(startDate.getTime() + parseFloat(duration) * 60 * 60 * 1000);
+
+    return `${startDate.toLocaleTimeString('fr-CA', { hour: 'numeric', minute: '2-digit' })} - ${endDate.toLocaleTimeString('fr-CA', { hour: 'numeric', minute: '2-digit' })}`;
+  }
+
+  const bookingSlots = selectedTutor ? buildBookingSlots(selectedTutor, bookingDate, bookingDuration) : [];
+
+  useEffect(() => {
+    if (bookingTime && !bookingSlots.includes(bookingTime)) {
+      setBookingTime('');
+    }
+  }, [bookingTime, bookingSlots]);
 
   function formatAvailability(tutor: any): string {
     if (!tutor.availability || tutor.availability.length === 0) {
@@ -363,7 +401,7 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="1">1 heure</SelectItem>
-                    <SelectItem value="1.5">1h30</SelectItem>
+                    <SelectItem value="1.5">1.5 heures</SelectItem>
                     <SelectItem value="2">2 heures</SelectItem>
                     <SelectItem value="3">3 heures</SelectItem>
                   </SelectContent>
@@ -496,17 +534,29 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-gray-500" />
-                <div className="text-sm text-gray-600">
-                  {formatAvailability(tutor)}
+                <div className="flex items-start gap-2">
+                  <MapPin className="h-4 w-4 text-gray-500 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-xs text-gray-500">Niveaux</div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {tutor.levels?.map((level: string, idx: number) => (
+                        <Badge key={idx} variant="outline" className="text-xs">
+                          {level}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Calendar className="h-4 w-4 text-gray-500 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-xs text-gray-500">Disponibilites</div>
+                    <div className="text-sm text-gray-600 mt-1">
+                      {formatAvailability(tutor)}
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              <div className="text-xs text-gray-500 mt-1">
-                {formatAvailabilityDetails(tutor)}
-              </div>
-            </div>
 
               <Dialog>
                 <DialogTrigger asChild>
@@ -527,15 +577,50 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="booking-date">Date et heure <span className="text-red-500">*</span></Label>
+                      <Label htmlFor="booking-date">Date <span className="text-red-500">*</span></Label>
                       <Input
                         id="booking-date"
-                        type="datetime-local"
+                        type="date"
                         value={bookingDate}
                         onChange={(e) => setBookingDate(e.target.value)}
-                        min={new Date().toISOString().slice(0, 16)}
+                        min={new Date().toISOString().split('T')[0]}
                         required
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Créneau <span className="text-red-500">*</span></Label>
+                      {!bookingDate && (
+                        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                          Choisissez d&apos;abord une date pour voir les heures disponibles.
+                        </div>
+                      )}
+                      {bookingDate && bookingSlots.length === 0 && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                          Aucun créneau disponible pour cette date.
+                        </div>
+                      )}
+                      {bookingSlots.length > 0 && (
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {bookingSlots.map((slot) => {
+                            const isActive = bookingTime === slot;
+                            return (
+                              <button
+                                key={slot}
+                                type="button"
+                                onClick={() => setBookingTime(slot)}
+                                className={[
+                                  'rounded-xl border px-3 py-3 text-sm font-semibold transition-all',
+                                  isActive
+                                    ? 'border-[#2E5CA8] bg-[#2E5CA8] text-white shadow-sm'
+                                    : 'border-amber-200 bg-amber-50 text-slate-800 hover:border-[#2E5CA8] hover:bg-blue-50',
+                                ].join(' ')}
+                              >
+                                {formatSlotLabel(slot, bookingDuration)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="booking-duration">Durée <span className="text-red-500">*</span></Label>
@@ -545,7 +630,7 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="1">1 heure</SelectItem>
-                          <SelectItem value="1.5">1h30</SelectItem>
+                          <SelectItem value="1.5">1.5 heures</SelectItem>
                           <SelectItem value="2">2 heures</SelectItem>
                           <SelectItem value="3">3 heures</SelectItem>
                         </SelectContent>
@@ -579,6 +664,10 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
                     <div className="bg-gray-50 p-3 rounded-lg">
                       <div className="flex justify-between items-center text-sm">
                         <div>
+                          <div className="text-gray-600">
+                            Date: {bookingDate ? new Date(`${bookingDate}T00:00:00`).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' }) : 'Non choisie'}
+                          </div>
+                          <div className="text-gray-600">Créneau: {bookingTime ? formatSlotLabel(bookingTime, bookingDuration) : 'Non choisi'}</div>
                           <div className="text-gray-600">Durée: {bookingDuration}h</div>
                           <div className="text-gray-600">Tarif: {tutor.rate} $/h</div>
                         </div>
@@ -592,48 +681,26 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
                     </div>
 
                     {/* Disponibilités hebdo direct tuteur */}
-                    <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <p className="text-xs font-bold text-blue-700">Disponibilités hebdomadaires de ce tuteur</p>
-                      <p className="text-xs text-gray-700">{formatAvailabilityDetails(tutor)}</p>
+                    <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                      <p className="text-xs font-bold text-blue-700">Jours disponibles</p>
+                      <p className="text-sm text-gray-700">{formatAvailability(tutor)}</p>
                     </div>
 
 
-                    {/* Section de paiement */}
-                    {!paymentSuccess ? (
-                      <Alert className="bg-yellow-50 border-yellow-200">
-                        <CreditCard className="h-4 w-4" />
-                        <AlertDescription>
-                          Le paiement est requis avant de confirmer la réservation.
-                        </AlertDescription>
-                      </Alert>
-                    ) : (
-                      <Alert className="bg-green-50 border-green-200">
-                        <CreditCard className="h-4 w-4 text-green-600" />
-                        <AlertDescription className="text-green-600">
-                          Paiement effectué avec succès! Vous pouvez maintenant confirmer votre réservation.
-                        </AlertDescription>
-                      </Alert>
-                    )}
+                    <Alert className="bg-yellow-50 border-yellow-200">
+                      <AlertDescription>
+                        Aucun paiement n&apos;est pris à la réservation. Après la séance terminée, vous aurez 5 jours pour payer.
+                      </AlertDescription>
+                    </Alert>
 
-                    {!paymentSuccess ? (
-                      <Button 
-                        onClick={handlePayment} 
-                        className="w-full" 
-                        style={{ backgroundColor: '#E74C3C' }}
-                        disabled={!bookingDate || !bookingSubject}
-                      >
-                        <CreditCard className="h-4 w-4 mr-2" />
-                        Procéder au paiement ({(tutor.rate * parseFloat(bookingDuration)).toFixed(2)} $ CAD)
-                      </Button>
-                    ) : (
-                      <Button 
-                        onClick={handleBookSession} 
-                        className="w-full" 
-                        style={{ backgroundColor: '#2E5CA8' }}
-                      >
-                        Confirmer la réservation
-                      </Button>
-                    )}
+                    <Button 
+                      onClick={handleBookSession} 
+                      className="w-full" 
+                      style={{ backgroundColor: '#2E5CA8' }}
+                      disabled={!bookingDate || !bookingTime || !bookingSubject}
+                    >
+                      Confirmer la réservation
+                    </Button>
                   </div>
                 </DialogContent>
               </Dialog>
@@ -642,61 +709,6 @@ export function TutorSearch({ userId, accessToken }: TutorSearchProps) {
         ))}
       </div>
 
-      {/* Dialog de paiement simulé */}
-      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Paiement sécurisé</DialogTitle>
-            <DialogDescription>
-              Intégration Stripe (à configurer)
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Alert>
-              <AlertDescription>
-                <strong>Mode démonstration</strong><br />
-                Le paiement Stripe sera configuré ultérieurement. Pour l'instant, cliquez sur "Simuler le paiement" pour continuer.
-              </AlertDescription>
-            </Alert>
-            
-            <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-              <div className="flex justify-between">
-                <span>Tuteur:</span>
-                <span className="font-medium">{selectedTutor?.user?.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Matière:</span>
-                <span className="font-medium">{bookingSubject || 'Non spécifiée'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Durée:</span>
-                <span className="font-medium">{bookingDuration}h</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Tarif:</span>
-                <span className="font-medium">{selectedTutor?.rate} $/h</span>
-              </div>
-              <div className="border-t pt-2 flex justify-between text-lg font-bold">
-                <span>Total:</span>
-                <span style={{ color: '#E74C3C' }}>
-                  {selectedTutor ? (selectedTutor.rate * parseFloat(bookingDuration)).toFixed(2) : '0.00'} $ CAD
-                </span>
-              </div>
-            </div>
-
-            <Button 
-              onClick={processPayment} 
-              className="w-full" 
-              style={{ backgroundColor: '#2E5CA8' }}
-            >
-              Simuler le paiement
-            </Button>
-            <Button onClick={() => setShowPaymentDialog(false)} variant="outline" className="w-full">
-              Annuler
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {filteredTutors.length === 0 && (
         <Card>

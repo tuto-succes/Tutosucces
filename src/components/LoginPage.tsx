@@ -14,7 +14,7 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin, onBack, onNavigateToTutorRegistration, onNavigateToDiagnostic }: LoginPageProps) {
-  const [selectedRole, setSelectedRole] = useState<'student' | 'tutor' | null>(null);
+  const [selectedRole, setSelectedRole] = useState<'student' | 'tutor' | 'admin' | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showDiagnosticLink, setShowDiagnosticLink] = useState(false);
@@ -32,14 +32,13 @@ export function LoginPage({ onLogin, onBack, onNavigateToTutorRegistration, onNa
       
       console.log('✅ Utilisateur connecté:', userData);
       
-      // Si c'est un admin, on passe directement la vérification de rôle
-      if (userData.role === 'admin') {
-        onLogin(email, password);
+      // Vérifier que le rôle correspond à la sélection
+      if (selectedRole === 'admin' && userData.role !== 'admin') {
+        setError('Ce compte n\'est pas un compte administrateur.');
+        setIsLoading(false);
         return;
       }
-      
-      // Verify role matches selection (optional, but good UX)
-      if (selectedRole && userData.role !== selectedRole) {
+      if (selectedRole !== 'admin' && selectedRole && userData.role !== selectedRole) {
         setError(`Ce compte est enregistré comme ${userData.role === 'student' ? 'Élève' : 'Tuteur'}. Veuillez sélectionner le bon profil.`);
         setIsLoading(false);
         return;
@@ -151,10 +150,7 @@ export function LoginPage({ onLogin, onBack, onNavigateToTutorRegistration, onNa
             {/* Connexion Admin */}
             <div className="mt-4 text-center">
               <button
-                onClick={() => {
-                  setSelectedRole('student'); // On utilise student comme placeholder pour admin
-                  setEmail('admin@test.com');
-                }}
+                onClick={() => setSelectedRole('admin')}
                 className="text-sm text-white/60 hover:text-white hover:underline transition-colors"
               >
                 Accès administrateur
@@ -170,12 +166,14 @@ export function LoginPage({ onLogin, onBack, onNavigateToTutorRegistration, onNa
   return (
     <div className="min-h-screen flex" style={{ backgroundColor: '#F8F9FA' }}>
       {/* Left Side - Branding */}
-      <div 
-        className="hidden lg:flex lg:w-1/2 flex-col justify-center items-center p-12" 
-        style={{ 
-          background: selectedRole === 'student' 
+      <div
+        className="hidden lg:flex lg:w-1/2 flex-col justify-center items-center p-12"
+        style={{
+          background: selectedRole === 'student'
             ? 'linear-gradient(135deg, #2E5CA8 0%, #9B59B6 100%)'
-            : 'linear-gradient(135deg, #E74C3C 0%, #2E5CA8 100%)'
+            : selectedRole === 'admin'
+              ? 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)'
+              : 'linear-gradient(135deg, #E74C3C 0%, #2E5CA8 100%)'
         }}
       >
         <div className="max-w-md text-white">
@@ -214,37 +212,41 @@ export function LoginPage({ onLogin, onBack, onNavigateToTutorRegistration, onNa
         <div className="w-full max-w-md">
           <div className="bg-white rounded-2xl shadow-xl p-8">
             {/* Bouton retour pour changer de rôle */}
-            <button
-              onClick={() => {
-                setSelectedRole(null);
-                setEmail('');
-                setPassword('');
-              }}
-              className="flex items-center gap-2 mb-6 text-sm hover:underline"
-              style={{ color: '#7F8C8D' }}
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Changer de profil
-            </button>
+            {selectedRole !== 'admin' && (
+              <button
+                onClick={() => {
+                  setSelectedRole(null);
+                  setEmail('');
+                  setPassword('');
+                }}
+                className="flex items-center gap-2 mb-6 text-sm hover:underline"
+                style={{ color: '#7F8C8D' }}
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Changer de profil
+              </button>
+            )}
 
             {/* Header avec badge du rôle */}
             <div className="mb-8">
               <div className="flex items-center gap-3 mb-4">
-                <div 
+                <div
                   className="w-12 h-12 rounded-full flex items-center justify-center"
-                  style={{ 
-                    backgroundColor: selectedRole === 'student' ? '#E3F2FD' : '#FFEBEE'
+                  style={{
+                    backgroundColor: selectedRole === 'student' ? '#E3F2FD' : selectedRole === 'admin' ? '#1a1a2e' : '#FFEBEE'
                   }}
                 >
                   {selectedRole === 'student' ? (
                     <Users className="w-6 h-6" style={{ color: '#2E5CA8' }} />
+                  ) : selectedRole === 'admin' ? (
+                    <Users className="w-6 h-6" style={{ color: '#ffffff' }} />
                   ) : (
                     <GraduationCap className="w-6 h-6" style={{ color: '#E74C3C' }} />
                   )}
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold" style={{ color: '#2C3E50' }}>
-                    {selectedRole === 'student' ? 'Connexion Élève / Parent' : 'Connexion Tuteur'}
+                    {selectedRole === 'student' ? 'Connexion Élève / Parent' : selectedRole === 'admin' ? 'Connexion Administrateur' : 'Connexion Tuteur'}
                   </h2>
                 </div>
               </div>
@@ -311,12 +313,12 @@ export function LoginPage({ onLogin, onBack, onNavigateToTutorRegistration, onNa
                 type="submit" 
                 disabled={isLoading}
                 className="w-full h-12 text-lg font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
-                style={{ 
-                  backgroundColor: selectedRole === 'student' ? '#2E5CA8' : '#E74C3C',
+                style={{
+                  backgroundColor: selectedRole === 'student' ? '#2E5CA8' : selectedRole === 'admin' ? '#1a1a2e' : '#E74C3C',
                   opacity: isLoading ? 0.7 : 1
                 }}
-                onMouseOver={(e) => !isLoading && (e.currentTarget.style.backgroundColor = selectedRole === 'student' ? '#1E4A88' : '#C0392B')}
-                onMouseOut={(e) => !isLoading && (e.currentTarget.style.backgroundColor = selectedRole === 'student' ? '#2E5CA8' : '#E74C3C')}
+                onMouseOver={(e) => !isLoading && (e.currentTarget.style.backgroundColor = selectedRole === 'student' ? '#1E4A88' : selectedRole === 'admin' ? '#0d0d1a' : '#C0392B')}
+                onMouseOut={(e) => !isLoading && (e.currentTarget.style.backgroundColor = selectedRole === 'student' ? '#2E5CA8' : selectedRole === 'admin' ? '#1a1a2e' : '#E74C3C')}
               >
                 {isLoading ? 'Connexion en cours...' : 'Se connecter'}
               </Button>

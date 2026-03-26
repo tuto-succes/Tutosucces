@@ -1,442 +1,297 @@
 import { useState, useEffect } from 'react';
-import { DollarSign, Calendar, TrendingUp, Download, Eye, Clock, FileText, CheckCircle } from 'lucide-react';
+import { Calendar, TrendingUp, Clock, FileText, CheckCircle, ChevronDown, ChevronUp, Building2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { getMockPayrollRecords } from '../../utils/mockData';
+import { supabase } from '../../app/core/supabase.client';
 
 interface RevenueTrackingProps {
   userId: string;
   accessToken: string;
 }
 
-export function RevenueTracking({ userId, accessToken }: RevenueTrackingProps) {
-  const [payrollRecords, setPayrollRecords] = useState<any[]>([]);
+export function RevenueTracking({ userId }: RevenueTrackingProps) {
+  const [payouts, setPayouts] = useState<any[]>([]);
+  const [currentWeekSessions, setCurrentWeekSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRecord, setSelectedRecord] = useState<any>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchPayrollRecords();
-  }, []);
+    fetchData();
+  }, [userId]);
 
-  async function fetchPayrollRecords() {
-    try {
-      const data = await getMockPayrollRecords(userId);
-      setPayrollRecords(data);
-    } catch (error) {
-      console.error('Error fetching payroll records:', error);
-    } finally {
-      setLoading(false);
+  async function fetchData() {
+    setLoading(true);
+
+    // Semaine en cours (lundi → dimanche)
+    const now = new Date();
+    const day = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+
+    const mondayStr = monday.toISOString().split('T')[0];
+    const sundayStr = sunday.toISOString().split('T')[0];
+
+    // Séances complétées cette semaine
+    const { data: sessionsData } = await supabase
+      .from('sessions')
+      .select('id, subject, session_date, duration_minutes, total_price, price_per_hour, student_id')
+      .eq('tutor_id', userId)
+      .eq('status', 'completed')
+      .gte('session_date', mondayStr)
+      .lte('session_date', sundayStr);
+
+    const studentIds = [...new Set((sessionsData || []).map((s: any) => s.student_id))];
+    let studentMap: Record<string, string> = {};
+    if (studentIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, name')
+        .in('id', studentIds);
+      (profiles || []).forEach((p: any) => { studentMap[p.id] = p.name; });
     }
+
+    const sessions = (sessionsData || []).map((s: any) => ({
+      ...s,
+      student_name: studentMap[s.student_id] || 'Élève',
+    }));
+    setCurrentWeekSessions(sessions);
+
+    // Fiches de paie (tutor_payouts)
+    const { data: payoutsData, error } = await supabase
+      .from('tutor_payouts')
+      .select('*')
+      .eq('tutor_id', userId)
+      .order('period_end', { ascending: false });
+
+    console.log('💰 tutor_payouts query — userId:', userId, 'data:', payoutsData, 'error:', error);
+
+    if (!error && payoutsData) {
+      // Pour chaque payout, charger les séances incluses
+      const payoutsWithSessions = await Promise.all(
+        payoutsData.map(async (payout: any) => {
+          if (!payout.session_ids || payout.session_ids.length === 0) {
+            return { ...payout, sessions: [] };
+          }
+          const { data: pSessions } = await supabase
+            .from('sessions')
+            .select('id, subject, session_date, duration_minutes, total_price, price_per_hour, student_id')
+            .in('id', payout.session_ids);
+
+          const sIds = [...new Set((pSessions || []).map((s: any) => s.student_id))];
+          let sMap: Record<string, string> = {};
+          if (sIds.length > 0) {
+            const { data: profs } = await supabase.from('profiles').select('id, name').in('id', sIds);
+            (profs || []).forEach((p: any) => { sMap[p.id] = p.name; });
+          }
+
+          return {
+            ...payout,
+            sessions: (pSessions || []).map((s: any) => ({
+              ...s,
+              student_name: sMap[s.student_id] || 'Élève',
+            })),
+          };
+        })
+      );
+      setPayouts(payoutsWithSessions);
+    }
+
+    setLoading(false);
   }
 
-  // Calculer les statistiques
-  const thisWeekRevenue = payrollRecords
-    .filter(r => r.status === 'current')
-    .reduce((sum, r) => sum + r.totalAmount, 0);
-
-  const thisMonthRevenue = payrollRecords
-    .filter(r => {
-      const recordDate = new Date(r.periodEnd);
-      const now = new Date();
-      return recordDate.getMonth() === now.getMonth() && 
-             recordDate.getFullYear() === now.getFullYear();
-    })
-    .reduce((sum, r) => sum + r.totalAmount, 0);
-
-  const totalRevenue = payrollRecords
-    .filter(r => r.status === 'paid')
-    .reduce((sum, r) => sum + r.totalAmount, 0);
-
-  const totalHoursThisWeek = payrollRecords
-    .filter(r => r.status === 'current')
-    .reduce((sum, r) => sum + r.totalHours, 0);
-
-  function downloadPayslip(record: any) {
-    alert(`Téléchargement du relevé de paie pour la semaine du ${new Date(record.periodStart).toLocaleDateString('fr-FR')} au ${new Date(record.periodEnd).toLocaleDateString('fr-FR')}`);
-    // En production, cela générerait un PDF
+  function formatDate(d: string) {
+    return new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
   }
 
-  if (loading) {
-    return <div className="text-center py-8">Chargement des revenus...</div>;
-  }
+  const currentWeekTotal = currentWeekSessions.reduce((s, x) => s + (x.total_price || 0), 0);
+  const currentWeekHours = currentWeekSessions.reduce((s, x) => s + (x.duration_minutes || 0), 0) / 60;
+  const totalPaid = payouts.filter(p => p.status === 'paid').reduce((s, p) => s + (p.amount || 0), 0);
+  const pendingPayout = payouts.filter(p => p.status === 'pending').reduce((s, p) => s + (p.amount || 0), 0);
+
+  const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
+    paid:    { label: 'Payé',             color: 'text-green-700',  bg: 'bg-green-50 border-green-200' },
+    pending: { label: 'En attente',       color: 'text-orange-600', bg: 'bg-orange-50 border-orange-200' },
+  };
+
+  if (loading) return <div className="text-center py-12 text-gray-500">Chargement...</div>;
 
   return (
     <div className="space-y-6">
-      {/* En-tête */}
       <div>
-        <h2 className="text-2xl font-bold" style={{ color: '#2C3E50' }}>
-          Mes revenus
-        </h2>
-        <p className="text-sm mt-1" style={{ color: '#7F8C8D' }}>
-          Consultez vos relevés de paie et suivez vos revenus
-        </p>
+        <h2 className="text-2xl font-bold text-gray-900">Mes revenus</h2>
+        <p className="text-sm text-gray-500 mt-1">Vos fiches de paie et séances de la semaine</p>
       </div>
 
-      {/* Statistiques */}
-      <div className="grid md:grid-cols-4 gap-4">
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Semaine en cours</CardDescription>
-            <CardTitle className="text-3xl" style={{ color: '#2E5CA8' }}>
-              {thisWeekRevenue.toFixed(2)} $
-            </CardTitle>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Semaine en cours</CardDescription>
+            <CardTitle className="text-2xl text-blue-600">{currentWeekTotal.toFixed(2)} $</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2 text-sm" style={{ color: '#7F8C8D' }}>
-              <Clock className="h-4 w-4" />
-              {totalHoursThisWeek}h de cours
-            </div>
+            <p className="text-xs text-gray-500">{currentWeekSessions.length} séance{currentWeekSessions.length !== 1 ? 's' : ''} · {currentWeekHours.toFixed(1)}h</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Ce mois</CardDescription>
-            <CardTitle className="text-3xl" style={{ color: '#E74C3C' }}>
-              {thisMonthRevenue.toFixed(2)} $
-            </CardTitle>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> En attente</CardDescription>
+            <CardTitle className="text-2xl text-orange-500">{pendingPayout.toFixed(2)} $</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2 text-sm" style={{ color: '#7F8C8D' }}>
-              <TrendingUp className="h-4 w-4" />
-              En progression
-            </div>
+            <p className="text-xs text-gray-500">Virement en cours</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Total versé</CardDescription>
-            <CardTitle className="text-3xl" style={{ color: '#2C3E50' }}>
-              {totalRevenue.toFixed(2)} $
-            </CardTitle>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1"><CheckCircle className="h-3.5 w-3.5" /> Total versé</CardDescription>
+            <CardTitle className="text-2xl text-green-600">{totalPaid.toFixed(2)} $</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2 text-sm" style={{ color: '#7F8C8D' }}>
-              <CheckCircle className="h-4 w-4" />
-              Paiements reçus
-            </div>
+            <p className="text-xs text-gray-500">{payouts.filter(p => p.status === 'paid').length} virement{payouts.filter(p => p.status === 'paid').length !== 1 ? 's' : ''}</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Taux horaire moyen</CardDescription>
-            <CardTitle className="text-3xl" style={{ color: '#2E5CA8' }}>
-              35 $
-            </CardTitle>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1"><TrendingUp className="h-3.5 w-3.5" /> Total fiches</CardDescription>
+            <CardTitle className="text-2xl text-gray-700">{payouts.length}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2 text-sm" style={{ color: '#7F8C8D' }}>
-              <DollarSign className="h-4 w-4" />
-              Par heure
-            </div>
+            <p className="text-xs text-gray-500">Depuis le début</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Relevés de paie */}
+      {/* Séances semaine en cours */}
+      {currentWeekSessions.length > 0 && (
+        <Card className="border-blue-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Clock className="h-4 w-4 text-blue-600" />
+              Séances cette semaine (non encore versées)
+            </CardTitle>
+            <CardDescription>Ces séances seront incluses dans votre prochaine fiche de paie dimanche</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {currentWeekSessions.map(s => (
+                <div key={s.id} className="flex items-center justify-between text-sm py-2 border-b last:border-0">
+                  <div>
+                    <span className="font-medium text-gray-800">{s.student_name}</span>
+                    <span className="text-gray-500 ml-2">· {s.subject} · {formatDate(s.session_date)} · {Math.round(s.duration_minutes / 60 * 10) / 10}h</span>
+                  </div>
+                  <span className="font-semibold text-blue-600">{(s.total_price || 0).toFixed(2)} $</span>
+                </div>
+              ))}
+              <div className="flex justify-between pt-2 font-semibold text-gray-800">
+                <span>Total semaine</span>
+                <span className="text-blue-600">{currentWeekTotal.toFixed(2)} $</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Fiches de paie */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" style={{ color: '#2E5CA8' }} />
-            Relevés de paie hebdomadaires
+            <FileText className="h-5 w-5 text-gray-600" />
+            Fiches de paie
           </CardTitle>
-          <CardDescription>
-            Vos relevés sont générés chaque dimanche soir et le paiement est effectué le vendredi suivant
-          </CardDescription>
+          <CardDescription>Générées chaque dimanche par l'administration</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="all" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="all">Tous</TabsTrigger>
-              <TabsTrigger value="current">En cours</TabsTrigger>
-              <TabsTrigger value="pending">En attente</TabsTrigger>
-              <TabsTrigger value="paid">Payés</TabsTrigger>
-            </TabsList>
+          {payouts.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <Building2 className="h-12 w-12 mx-auto mb-3" />
+              <p className="font-medium text-gray-600">Aucune fiche de paie</p>
+              <p className="text-sm mt-1">Vos fiches apparaîtront ici dès que l'admin effectuera un virement</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {payouts.map(payout => {
+                const cfg = statusConfig[payout.status] || statusConfig.pending;
+                const isExpanded = expandedId === payout.id;
+                return (
+                  <div key={payout.id} className={`border rounded-xl overflow-hidden ${cfg.bg}`}>
+                    <button
+                      className="w-full flex items-center justify-between p-4 text-left"
+                      onClick={() => setExpandedId(isExpanded ? null : payout.id)}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <p className="font-semibold text-gray-900">
+                            {formatDate(payout.period_start)} – {formatDate(payout.period_end)}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge className={`text-xs border-0 ${cfg.color} ${cfg.bg}`}>{cfg.label}</Badge>
+                            {payout.paid_at && (
+                              <span className="text-xs text-gray-500">
+                                Versé le {new Date(payout.paid_at).toLocaleDateString('fr-FR')}
+                              </span>
+                            )}
+                            <span className="text-xs text-gray-500">
+                              {payout.sessions?.length || 0} séance{(payout.sessions?.length || 0) !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl font-bold text-gray-900">{(payout.amount || 0).toFixed(2)} $</span>
+                        {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-gray-500" />}
+                      </div>
+                    </button>
 
-            <TabsContent value="all" className="space-y-3">
-              {payrollRecords.map((record) => (
-                <PayrollRecordCard
-                  key={record.id}
-                  record={record}
-                  onView={() => setSelectedRecord(record)}
-                  onDownload={() => downloadPayslip(record)}
-                />
-              ))}
-            </TabsContent>
-
-            <TabsContent value="current" className="space-y-3">
-              {payrollRecords
-                .filter(r => r.status === 'current')
-                .map((record) => (
-                  <PayrollRecordCard
-                    key={record.id}
-                    record={record}
-                    onView={() => setSelectedRecord(record)}
-                    onDownload={() => downloadPayslip(record)}
-                  />
-                ))}
-            </TabsContent>
-
-            <TabsContent value="pending" className="space-y-3">
-              {payrollRecords
-                .filter(r => r.status === 'pending')
-                .map((record) => (
-                  <PayrollRecordCard
-                    key={record.id}
-                    record={record}
-                    onView={() => setSelectedRecord(record)}
-                    onDownload={() => downloadPayslip(record)}
-                  />
-                ))}
-            </TabsContent>
-
-            <TabsContent value="paid" className="space-y-3">
-              {payrollRecords
-                .filter(r => r.status === 'paid')
-                .map((record) => (
-                  <PayrollRecordCard
-                    key={record.id}
-                    record={record}
-                    onView={() => setSelectedRecord(record)}
-                    onDownload={() => downloadPayslip(record)}
-                  />
-                ))}
-            </TabsContent>
-          </Tabs>
+                    {isExpanded && payout.sessions?.length > 0 && (
+                      <div className="px-4 pb-4 border-t bg-white">
+                        <table className="w-full mt-3 text-sm">
+                          <thead>
+                            <tr className="text-left text-xs text-gray-500 border-b">
+                              <th className="pb-2">Date</th>
+                              <th className="pb-2">Élève</th>
+                              <th className="pb-2">Matière</th>
+                              <th className="pb-2 text-right">Durée</th>
+                              <th className="pb-2 text-right">Montant</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {payout.sessions.map((s: any) => (
+                              <tr key={s.id} className="border-b last:border-0">
+                                <td className="py-2">{formatDate(s.session_date)}</td>
+                                <td className="py-2">{s.student_name}</td>
+                                <td className="py-2">{s.subject}</td>
+                                <td className="py-2 text-right">{Math.round(s.duration_minutes / 60 * 10) / 10}h</td>
+                                <td className="py-2 text-right font-medium text-blue-600">{(s.total_price || 0).toFixed(2)} $</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="font-semibold">
+                              <td colSpan={4} className="pt-2 text-gray-700">Total</td>
+                              <td className="pt-2 text-right text-blue-700">{(payout.amount || 0).toFixed(2)} $</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                        {payout.notes && (
+                          <p className="mt-3 text-xs text-gray-500 italic">Note : {payout.notes}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
-
-      {/* Dialogue de détails du relevé */}
-      {selectedRecord && (
-        <PayrollDetailDialog
-          record={selectedRecord}
-          onClose={() => setSelectedRecord(null)}
-          onDownload={() => downloadPayslip(selectedRecord)}
-        />
-      )}
-    </div>
-  );
-}
-
-// Composant pour afficher une carte de relevé de paie
-function PayrollRecordCard({ record, onView, onDownload }: any) {
-  const statusConfig: Record<string, { label: string; color: string; bgColor: string }> = {
-    current: { label: 'Semaine en cours', color: '#2E5CA8', bgColor: '#EBF4FF' },
-    pending: { label: 'Paiement en attente', color: '#F39C12', bgColor: '#FEF3E2' },
-    paid: { label: 'Payé', color: '#27AE60', bgColor: '#E8F8F0' }
-  };
-
-  const config = statusConfig[record.status] || statusConfig.pending;
-
-  return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex justify-between items-start">
-          <div className="space-y-3 flex-1">
-            <div className="flex items-center gap-3">
-              <Calendar className="h-5 w-5" style={{ color: '#7F8C8D' }} />
-              <div>
-                <p className="font-semibold" style={{ color: '#2C3E50' }}>
-                  Semaine du {new Date(record.periodStart).toLocaleDateString('fr-FR')} au {new Date(record.periodEnd).toLocaleDateString('fr-FR')}
-                </p>
-                <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                  Relevé #{record.id}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-6">
-              <div>
-                <p className="text-sm" style={{ color: '#7F8C8D' }}>Séances complétées</p>
-                <p className="text-xl font-bold" style={{ color: '#2C3E50' }}>
-                  {record.sessions.length}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm" style={{ color: '#7F8C8D' }}>Heures totales</p>
-                <p className="text-xl font-bold" style={{ color: '#2C3E50' }}>
-                  {record.totalHours}h
-                </p>
-              </div>
-              <div>
-                <p className="text-sm" style={{ color: '#7F8C8D' }}>Montant</p>
-                <p className="text-2xl font-bold" style={{ color: '#2E5CA8' }}>
-                  {record.totalAmount.toFixed(2)} $
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <Badge style={{ backgroundColor: config.bgColor, color: config.color, border: 'none' }}>
-                {config.label}
-              </Badge>
-              {record.paymentDate && (
-                <span className="ml-3 text-sm" style={{ color: '#7F8C8D' }}>
-                  Payé le {new Date(record.paymentDate).toLocaleDateString('fr-FR')}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={onView}>
-              <Eye className="h-4 w-4 mr-2" />
-              Détails
-            </Button>
-            {record.status !== 'current' && (
-              <Button 
-                size="sm" 
-                onClick={onDownload}
-                style={{ backgroundColor: '#E74C3C', color: 'white' }}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Télécharger
-              </Button>
-            )}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Dialogue de détails du relevé
-function PayrollDetailDialog({ record, onClose, onDownload }: any) {
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div 
-        className="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-          <div>
-            <h3 className="text-xl font-bold" style={{ color: '#2C3E50' }}>
-              Relevé de paie - Semaine du {new Date(record.periodStart).toLocaleDateString('fr-FR')}
-            </h3>
-            <p className="text-sm" style={{ color: '#7F8C8D' }}>
-              Période : {new Date(record.periodStart).toLocaleDateString('fr-FR')} au {new Date(record.periodEnd).toLocaleDateString('fr-FR')}
-            </p>
-          </div>
-          <Button variant="ghost" onClick={onClose}>
-            ✕
-          </Button>
-        </div>
-
-        <div className="p-6 space-y-6">
-          {/* Résumé */}
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm" style={{ color: '#7F8C8D' }}>Nombre de séances</p>
-              <p className="text-2xl font-bold" style={{ color: '#2C3E50' }}>
-                {record.sessions.length}
-              </p>
-            </div>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm" style={{ color: '#7F8C8D' }}>Heures totales</p>
-              <p className="text-2xl font-bold" style={{ color: '#2C3E50' }}>
-                {record.totalHours}h
-              </p>
-            </div>
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <p className="text-sm" style={{ color: '#2E5CA8' }}>Montant total</p>
-              <p className="text-2xl font-bold" style={{ color: '#2E5CA8' }}>
-                {record.totalAmount.toFixed(2)} $
-              </p>
-            </div>
-          </div>
-
-          {/* Détails des séances */}
-          <div>
-            <h4 className="font-semibold mb-3" style={{ color: '#2C3E50' }}>
-              Détail des séances
-            </h4>
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="text-left p-3 text-sm font-semibold" style={{ color: '#2C3E50' }}>Date</th>
-                    <th className="text-left p-3 text-sm font-semibold" style={{ color: '#2C3E50' }}>Élève</th>
-                    <th className="text-left p-3 text-sm font-semibold" style={{ color: '#2C3E50' }}>Matière</th>
-                    <th className="text-right p-3 text-sm font-semibold" style={{ color: '#2C3E50' }}>Durée</th>
-                    <th className="text-right p-3 text-sm font-semibold" style={{ color: '#2C3E50' }}>Taux</th>
-                    <th className="text-right p-3 text-sm font-semibold" style={{ color: '#2C3E50' }}>Montant</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {record.sessions.map((session: any, index: number) => (
-                    <tr key={index} className="border-t">
-                      <td className="p-3 text-sm" style={{ color: '#2C3E50' }}>
-                        {new Date(session.date).toLocaleDateString('fr-FR')}
-                      </td>
-                      <td className="p-3 text-sm" style={{ color: '#2C3E50' }}>
-                        {session.studentName}
-                      </td>
-                      <td className="p-3 text-sm" style={{ color: '#2C3E50' }}>
-                        {session.subject}
-                      </td>
-                      <td className="p-3 text-sm text-right" style={{ color: '#2C3E50' }}>
-                        {session.duration}h
-                      </td>
-                      <td className="p-3 text-sm text-right" style={{ color: '#2C3E50' }}>
-                        {session.rate} $
-                      </td>
-                      <td className="p-3 text-sm text-right font-semibold" style={{ color: '#2E5CA8' }}>
-                        {session.amount.toFixed(2)} $
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-gray-50 border-t-2">
-                  <tr>
-                    <td colSpan={3} className="p-3 text-sm font-semibold" style={{ color: '#2C3E50' }}>
-                      Total
-                    </td>
-                    <td className="p-3 text-sm text-right font-semibold" style={{ color: '#2C3E50' }}>
-                      {record.totalHours}h
-                    </td>
-                    <td className="p-3"></td>
-                    <td className="p-3 text-sm text-right font-bold" style={{ color: '#2E5CA8' }}>
-                      {record.totalAmount.toFixed(2)} $
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-
-          {/* Note de paiement */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm" style={{ color: '#2E5CA8' }}>
-              <strong>Note :</strong> {record.status === 'current' 
-                ? 'Ce relevé est pour la semaine en cours. Il sera finalisé dimanche soir.'
-                : record.status === 'pending'
-                ? 'Le paiement sera effectué le vendredi suivant la fin de la période.'
-                : `Paiement effectué le ${new Date(record.paymentDate).toLocaleDateString('fr-FR')}.`
-              }
-            </p>
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={onClose}>
-              Fermer
-            </Button>
-            {record.status !== 'current' && (
-              <Button 
-                onClick={onDownload}
-                style={{ backgroundColor: '#E74C3C', color: 'white' }}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Télécharger le relevé
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

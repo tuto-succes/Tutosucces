@@ -338,13 +338,16 @@ export function HomePage({ onLogin, onSignup, onNavigateToConfidentialite, onNav
       {/* Header */}
       <header className="bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
+          <button
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          >
             <img src={logoImg} alt="Logo Tuto-Succès B&D" className="h-12" />
-            <div className="flex flex-col">
+            <div className="flex flex-col text-left">
               <h1 className="text-xl font-bold" style={{ color: '#2C3E50' }}>Tuto-Succès B&D</h1>
               <span className="text-xs tracking-wide" style={{ color: '#7F8C8D' }}>EN LIGNE</span>
             </div>
-          </div>
+          </button>
           
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6 text-sm">

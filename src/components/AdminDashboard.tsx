@@ -21,6 +21,7 @@ interface AdminDashboardProps {
 export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
   const [accessToken, setAccessToken] = useState<string>('');
   const [activeTab, setActiveTab] = useState('stats');
+  const [usersRefreshKey, setUsersRefreshKey] = useState(0);
 
   useEffect(() => {
     console.log('AdminDashboard mounted with user:', user);
@@ -131,7 +132,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
           </TabsContent>
 
           <TabsContent value="users">
-            <AdminUsers />
+            <AdminUsers key={usersRefreshKey} />
           </TabsContent>
 
           <TabsContent value="applications">
@@ -139,7 +140,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
           </TabsContent>
 
           <TabsContent value="messages">
-            <AdminContactMessagesPage />
+            <AdminContactMessagesPage onUserCreated={() => setUsersRefreshKey(k => k + 1)} />
           </TabsContent>
 
           <TabsContent value="schedule">

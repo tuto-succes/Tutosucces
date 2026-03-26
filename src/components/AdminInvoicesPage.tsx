@@ -2,125 +2,128 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { FileText, Download, DollarSign, Eye, CheckCircle, Clock } from 'lucide-react';
-
-interface InvoiceSession {
-  date: string;
-  time: string;
-  duration: number;
-  student: string;
-  subject: string;
-  amount: number;
-}
+import { FileText, Download, Eye, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { supabase } from '../app/core/supabase.client';
 
 interface Invoice {
-  invoiceNumber: string;
-  tutorName: string;
-  tutorId: string;
-  weekStart: string;
-  weekEnd: string;
-  sessions: InvoiceSession[];
-  totalHours: number;
-  hourlyRate: number;
-  totalAmount: number;
-  generatedAt: string;
-  status: 'pending' | 'paid';
-  paidAt?: string;
+  id: string;
+  invoiceId: string;
+  clientName: string;
+  studentName: string;
+  invoiceDate: string;
+  dueDate: string | null;
+  paymentStatus: string;
+  subtotal: number;
+  totalDue: number;
+  lineItems: any[];
 }
 
 export function AdminInvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadInvoices();
   }, []);
 
-  const loadInvoices = () => {
-    const stored = localStorage.getItem('tutorInvoices');
-    if (stored) {
-      const allInvoices = JSON.parse(stored);
-      // Trier par date de génération (plus récent en premier)
-      allInvoices.sort((a: Invoice, b: Invoice) => 
-        new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()
-      );
-      setInvoices(allInvoices);
+  const loadInvoices = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .order('invoice_date', { ascending: false });
+
+    if (error) {
+      console.error('Erreur chargement factures:', error);
+    } else {
+      setInvoices((data || []).map(mapInvoice));
     }
+    setLoading(false);
   };
 
-  const markAsPaid = (invoiceNumber: string) => {
-    const updatedInvoices = invoices.map(inv =>
-      inv.invoiceNumber === invoiceNumber
-        ? { ...inv, status: 'paid' as const, paidAt: new Date().toISOString() }
-        : inv
-    );
-    setInvoices(updatedInvoices);
-    localStorage.setItem('tutorInvoices', JSON.stringify(updatedInvoices));
-    
-    if (selectedInvoice?.invoiceNumber === invoiceNumber) {
-      setSelectedInvoice({ ...selectedInvoice, status: 'paid', paidAt: new Date().toISOString() });
+  function mapInvoice(row: any): Invoice {
+    return {
+      id: row.id,
+      invoiceId: row.invoice_id,
+      clientName: row.client_name || '',
+      studentName: row.student_name || '',
+      invoiceDate: row.invoice_date,
+      dueDate: row.due_date || null,
+      paymentStatus: row.payment_status || 'À payer',
+      subtotal: Number(row.subtotal ?? 0),
+      totalDue: Number(row.total_due ?? 0),
+      lineItems: row.line_items ?? [],
+    };
+  }
+
+  const markAsPaid = async (invoiceId: string) => {
+    const { error } = await supabase
+      .from('invoices')
+      .update({ payment_status: 'Payé' })
+      .eq('invoice_id', invoiceId);
+
+    if (!error) {
+      setInvoices(prev =>
+        prev.map(inv => inv.invoiceId === invoiceId ? { ...inv, paymentStatus: 'Payé' } : inv)
+      );
+      if (selectedInvoice?.invoiceId === invoiceId) {
+        setSelectedInvoice(s => s ? { ...s, paymentStatus: 'Payé' } : s);
+      }
     }
   };
 
   const downloadInvoice = (invoice: Invoice) => {
-    // Générer un reçu de facture en format texte
-    const weekStart = new Date(invoice.weekStart).toLocaleDateString('fr-CA');
-    const weekEnd = new Date(invoice.weekEnd).toLocaleDateString('fr-CA');
-    const generatedDate = new Date(invoice.generatedAt).toLocaleDateString('fr-CA');
-    
-    let invoiceText = `
+    const invoiceDate = new Date(invoice.invoiceDate).toLocaleDateString('fr-CA');
+
+    let text = `
 ═══════════════════════════════════════════════════════════
                     TUTO-SUCCÈS B&D
                   FACTURE DE TUTORAT
 ═══════════════════════════════════════════════════════════
 
-Numéro de facture: ${invoice.invoiceNumber}
-Date de génération: ${generatedDate}
+Numéro de facture: ${invoice.invoiceId}
+Date: ${invoiceDate}
 
-Tuteur: ${invoice.tutorName}
-Période: ${weekStart} - ${weekEnd}
+Client: ${invoice.clientName}
+Élève: ${invoice.studentName}
 
 -----------------------------------------------------------
 DÉTAIL DES SESSIONS
 -----------------------------------------------------------
 `;
 
-    invoice.sessions.forEach((session, index) => {
-      const sessionDate = new Date(session.date).toLocaleDateString('fr-CA');
-      invoiceText += `
-${index + 1}. ${sessionDate} à ${session.time}
-   Élève: ${session.student}
-   Matière: ${session.subject}
-   Durée: ${session.duration}h @ ${invoice.hourlyRate}$/h
-   Montant: ${session.amount.toFixed(2)}$
+    (invoice.lineItems || []).forEach((item: any, index: number) => {
+      text += `
+${index + 1}. ${item.date ? new Date(item.date).toLocaleDateString('fr-CA') : ''}
+   Élève: ${item.studentName || ''}
+   Matière: ${item.subject || ''}
+   Durée: ${item.durationHours || 0}h @ ${item.rate || 0}$/h
+   Montant: ${Number(item.total || 0).toFixed(2)}$
 `;
     });
 
-    invoiceText += `
+    text += `
 -----------------------------------------------------------
 RÉCAPITULATIF
 -----------------------------------------------------------
-Nombre de sessions: ${invoice.sessions.length}
-Heures totales: ${invoice.totalHours.toFixed(1)}h
-Taux horaire: ${invoice.hourlyRate.toFixed(2)}$/h
+Sous-total: ${invoice.subtotal.toFixed(2)}$
 
-MONTANT TOTAL: ${invoice.totalAmount.toFixed(2)}$
+MONTANT TOTAL: ${invoice.totalDue.toFixed(2)}$
 -----------------------------------------------------------
 
-Statut: ${invoice.status === 'paid' ? 'PAYÉ' : 'EN ATTENTE'}
-${invoice.paidAt ? `Date de paiement: ${new Date(invoice.paidAt).toLocaleDateString('fr-CA')}` : ''}
+Statut: ${invoice.paymentStatus}
 
 ═══════════════════════════════════════════════════════════
 Contact: tutosuccesbd@gmail.com | 514-651-2401
 ═══════════════════════════════════════════════════════════
 `;
 
-    // Télécharger le fichier
-    const blob = new Blob([invoiceText], { type: 'text/plain' });
+    const blob = new Blob([text], { type: 'text/plain' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${invoice.invoiceNumber}.txt`;
+    a.download = `${invoice.invoiceId}.txt`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -133,28 +136,69 @@ Contact: tutosuccesbd@gmail.com | 514-651-2401
     }).format(new Date(dateString));
   };
 
+  const isPaid = (status: string) => status === 'Payé';
+  const isLate = (inv: Invoice) =>
+    !isPaid(inv.paymentStatus) && !!inv.dueDate && new Date(inv.dueDate) < new Date();
+
   const totalPending = invoices
-    .filter(inv => inv.status === 'pending')
-    .reduce((sum, inv) => sum + inv.totalAmount, 0);
+    .filter(inv => !isPaid(inv.paymentStatus))
+    .reduce((sum, inv) => sum + inv.totalDue, 0);
 
   const totalPaid = invoices
-    .filter(inv => inv.status === 'paid')
-    .reduce((sum, inv) => sum + inv.totalAmount, 0);
+    .filter(inv => isPaid(inv.paymentStatus))
+    .reduce((sum, inv) => sum + inv.totalDue, 0);
+
+  const getStatusBadge = (invoice: Invoice) => {
+    if (isPaid(invoice.paymentStatus)) {
+      return (
+        <Badge style={{ backgroundColor: '#D1FAE5', color: '#10b981' }}>
+          Payé
+        </Badge>
+      );
+    }
+    if (isLate(invoice)) {
+      return (
+        <Badge style={{ backgroundColor: '#FEE2E2', color: '#E74C3C' }}>
+          En retard
+        </Badge>
+      );
+    }
+    return (
+      <Badge style={{ backgroundColor: '#FEF3C7', color: '#D97706' }}>
+        {invoice.paymentStatus}
+      </Badge>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="p-6 text-center">
+        <p style={{ color: '#7F8C8D' }}>Chargement des factures...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-3xl font-bold" style={{ color: '#2C3E50' }}>
-          Factures des tuteurs
-        </h2>
-        <p style={{ color: '#7F8C8D' }}>
-          Gérez les factures et les paiements des tuteurs
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold" style={{ color: '#2C3E50' }}>
+            Facturation
+          </h2>
+          <p style={{ color: '#7F8C8D' }}>
+            Gérez les factures des élèves et suivez les paiements
+          </p>
+        </div>
+        <Button
+          onClick={loadInvoices}
+          variant="outline"
+          style={{ borderColor: '#2E5CA8', color: '#2E5CA8' }}
+        >
+          Actualiser
+        </Button>
       </div>
 
-      {/* Statistiques */}
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-3 gap-6">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
@@ -162,12 +206,12 @@ Contact: tutosuccesbd@gmail.com | 514-651-2401
                 <Clock className="h-6 w-6" style={{ color: '#E74C3C' }} />
               </div>
               <div>
-                <p className="text-sm" style={{ color: '#7F8C8D' }}>En attente de paiement</p>
+                <p className="text-sm" style={{ color: '#7F8C8D' }}>En attente</p>
                 <p className="text-2xl font-bold" style={{ color: '#E74C3C' }}>
                   {totalPending.toFixed(2)}$
                 </p>
                 <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                  {invoices.filter(inv => inv.status === 'pending').length} facture(s)
+                  {invoices.filter(inv => !isPaid(inv.paymentStatus)).length} facture(s)
                 </p>
               </div>
             </div>
@@ -186,36 +230,48 @@ Contact: tutosuccesbd@gmail.com | 514-651-2401
                   {totalPaid.toFixed(2)}$
                 </p>
                 <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                  {invoices.filter(inv => inv.status === 'paid').length} facture(s)
+                  {invoices.filter(inv => isPaid(inv.paymentStatus)).length} facture(s)
                 </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-lg" style={{ backgroundColor: '#FEF3C7' }}>
+                <AlertTriangle className="h-6 w-6" style={{ color: '#D97706' }} />
+              </div>
+              <div>
+                <p className="text-sm" style={{ color: '#7F8C8D' }}>En retard</p>
+                <p className="text-2xl font-bold" style={{ color: '#D97706' }}>
+                  {invoices.filter(isLate).length}
+                </p>
+                <p className="text-sm" style={{ color: '#7F8C8D' }}>facture(s)</p>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Liste des factures */}
       {invoices.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
             <FileText className="h-16 w-16 mx-auto mb-4 opacity-20" style={{ color: '#7F8C8D' }} />
             <p className="text-lg" style={{ color: '#7F8C8D' }}>
-              Aucune facture générée pour le moment
-            </p>
-            <p className="text-sm mt-2" style={{ color: '#7F8C8D' }}>
-              Les factures apparaîtront ici après leur génération depuis le calendrier
+              Aucune facture pour le moment
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid md:grid-cols-3 gap-6">
-          {/* Liste */}
           <div className="md:col-span-1 space-y-3 max-h-[calc(100vh-400px)] overflow-y-auto">
             {invoices.map((invoice) => (
               <Card
-                key={invoice.invoiceNumber}
+                key={invoice.id}
                 className={`cursor-pointer transition-all ${
-                  selectedInvoice?.invoiceNumber === invoice.invoiceNumber
+                  selectedInvoice?.id === invoice.id
                     ? 'ring-2 ring-blue-500'
                     : 'hover:shadow-md'
                 }`}
@@ -225,37 +281,33 @@ Contact: tutosuccesbd@gmail.com | 514-651-2401
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
                       <h3 className="font-semibold" style={{ color: '#2C3E50' }}>
-                        {invoice.tutorName}
+                        {invoice.clientName || invoice.studentName}
                       </h3>
                       <p className="text-xs" style={{ color: '#7F8C8D' }}>
-                        {invoice.invoiceNumber}
+                        {invoice.invoiceId}
                       </p>
                     </div>
-                    <Badge
-                      style={
-                        invoice.status === 'paid'
-                          ? { backgroundColor: '#D1FAE5', color: '#10b981' }
-                          : { backgroundColor: '#FEE2E2', color: '#E74C3C' }
-                      }
-                    >
-                      {invoice.status === 'paid' ? 'Payé' : 'En attente'}
-                    </Badge>
+                    {getStatusBadge(invoice)}
                   </div>
-                  <p className="text-sm mb-2" style={{ color: '#7F8C8D' }}>
-                    {new Date(invoice.weekStart).toLocaleDateString('fr-CA')} - {new Date(invoice.weekEnd).toLocaleDateString('fr-CA')}
+                  <p className="text-sm mb-1" style={{ color: '#7F8C8D' }}>
+                    {formatDate(invoice.invoiceDate)}
                   </p>
+                  {invoice.dueDate && (
+                    <p className="text-xs mb-2" style={{ color: isLate(invoice) ? '#E74C3C' : '#7F8C8D' }}>
+                      Échéance: {formatDate(invoice.dueDate)}
+                    </p>
+                  )}
                   <p className="text-lg font-bold" style={{ color: '#E74C3C' }}>
-                    {invoice.totalAmount.toFixed(2)}$
+                    {invoice.totalDue.toFixed(2)}$
                   </p>
                   <p className="text-xs" style={{ color: '#7F8C8D' }}>
-                    {invoice.sessions.length} session(s) • {invoice.totalHours.toFixed(1)}h
+                    {invoice.lineItems.length} session(s)
                   </p>
                 </CardContent>
               </Card>
             ))}
           </div>
 
-          {/* Détails */}
           <div className="md:col-span-2">
             {selectedInvoice ? (
               <Card>
@@ -263,76 +315,66 @@ Contact: tutosuccesbd@gmail.com | 514-651-2401
                   <div className="flex items-start justify-between">
                     <div>
                       <CardTitle style={{ color: '#2C3E50' }}>
-                        Facture {selectedInvoice.invoiceNumber}
+                        Facture {selectedInvoice.invoiceId}
                       </CardTitle>
                       <p className="text-sm mt-1" style={{ color: '#7F8C8D' }}>
-                        Générée le {formatDate(selectedInvoice.generatedAt)}
+                        Émise le {formatDate(selectedInvoice.invoiceDate)}
                       </p>
                     </div>
-                    <Badge
-                      className="text-base px-4 py-2"
-                      style={
-                        selectedInvoice.status === 'paid'
-                          ? { backgroundColor: '#D1FAE5', color: '#10b981' }
-                          : { backgroundColor: '#FEE2E2', color: '#E74C3C' }
-                      }
-                    >
-                      {selectedInvoice.status === 'paid' ? 'Payé' : 'En attente'}
-                    </Badge>
+                    {getStatusBadge(selectedInvoice)}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* Info tuteur */}
                   <div className="bg-gray-50 p-4 rounded-lg">
-                    <h3 className="font-semibold mb-2" style={{ color: '#2C3E50' }}>
-                      Tuteur
-                    </h3>
-                    <p style={{ color: '#2C3E50' }}>{selectedInvoice.tutorName}</p>
-                    <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                      Période: {new Date(selectedInvoice.weekStart).toLocaleDateString('fr-CA')} - {new Date(selectedInvoice.weekEnd).toLocaleDateString('fr-CA')}
-                    </p>
+                    <h3 className="font-semibold mb-2" style={{ color: '#2C3E50' }}>Client</h3>
+                    <p style={{ color: '#2C3E50' }}>{selectedInvoice.clientName}</p>
+                    {selectedInvoice.studentName && selectedInvoice.studentName !== selectedInvoice.clientName && (
+                      <p className="text-sm" style={{ color: '#7F8C8D' }}>
+                        Élève: {selectedInvoice.studentName}
+                      </p>
+                    )}
+                    {selectedInvoice.dueDate && (
+                      <p className="text-sm mt-1" style={{ color: isLate(selectedInvoice) ? '#E74C3C' : '#7F8C8D' }}>
+                        Échéance: {formatDate(selectedInvoice.dueDate)}
+                        {isLate(selectedInvoice) && ' — EN RETARD'}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Sessions */}
-                  <div>
-                    <h3 className="font-semibold mb-3" style={{ color: '#2C3E50' }}>
-                      Détail des sessions ({selectedInvoice.sessions.length})
-                    </h3>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {selectedInvoice.sessions.map((session, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between p-3 rounded-lg border"
-                          style={{ borderColor: '#E0E0E0' }}
-                        >
-                          <div className="flex-1">
-                            <p className="font-medium" style={{ color: '#2C3E50' }}>
-                              {session.subject} - {session.student}
-                            </p>
-                            <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                              {new Date(session.date).toLocaleDateString('fr-CA')} à {session.time} • {session.duration}h
+                  {selectedInvoice.lineItems.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold mb-3" style={{ color: '#2C3E50' }}>
+                        Détail des sessions ({selectedInvoice.lineItems.length})
+                      </h3>
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {selectedInvoice.lineItems.map((item: any, index: number) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between p-3 rounded-lg border"
+                            style={{ borderColor: '#E0E0E0' }}
+                          >
+                            <div className="flex-1">
+                              <p className="font-medium" style={{ color: '#2C3E50' }}>
+                                {item.subject} — {item.studentName}
+                              </p>
+                              <p className="text-sm" style={{ color: '#7F8C8D' }}>
+                                {item.date ? new Date(item.date).toLocaleDateString('fr-CA') : ''} • {item.durationHours || 0}h @ {item.rate || 0}$/h
+                              </p>
+                            </div>
+                            <p className="font-semibold" style={{ color: '#E74C3C' }}>
+                              {Number(item.total || 0).toFixed(2)}$
                             </p>
                           </div>
-                          <p className="font-semibold" style={{ color: '#E74C3C' }}>
-                            {session.amount.toFixed(2)}$
-                          </p>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Total */}
                   <div className="border-t pt-4">
                     <div className="flex justify-between items-center mb-2">
-                      <span style={{ color: '#7F8C8D' }}>Heures totales:</span>
+                      <span style={{ color: '#7F8C8D' }}>Sous-total:</span>
                       <span className="font-semibold" style={{ color: '#2C3E50' }}>
-                        {selectedInvoice.totalHours.toFixed(1)}h
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center mb-2">
-                      <span style={{ color: '#7F8C8D' }}>Taux horaire:</span>
-                      <span className="font-semibold" style={{ color: '#2C3E50' }}>
-                        {selectedInvoice.hourlyRate.toFixed(2)}$/h
+                        {selectedInvoice.subtotal.toFixed(2)}$
                       </span>
                     </div>
                     <div className="flex justify-between items-center pt-2 border-t">
@@ -340,12 +382,11 @@ Contact: tutosuccesbd@gmail.com | 514-651-2401
                         MONTANT TOTAL:
                       </span>
                       <span className="text-2xl font-bold" style={{ color: '#E74C3C' }}>
-                        {selectedInvoice.totalAmount.toFixed(2)}$
+                        {selectedInvoice.totalDue.toFixed(2)}$
                       </span>
                     </div>
                   </div>
 
-                  {/* Actions */}
                   <div className="flex gap-3 pt-4 border-t">
                     <Button
                       onClick={() => downloadInvoice(selectedInvoice)}
@@ -356,9 +397,9 @@ Contact: tutosuccesbd@gmail.com | 514-651-2401
                       <Download className="h-4 w-4 mr-2" />
                       Télécharger
                     </Button>
-                    {selectedInvoice.status === 'pending' && (
+                    {!isPaid(selectedInvoice.paymentStatus) && (
                       <Button
-                        onClick={() => markAsPaid(selectedInvoice.invoiceNumber)}
+                        onClick={() => markAsPaid(selectedInvoice.invoiceId)}
                         className="flex-1"
                         style={{ backgroundColor: '#10b981', color: 'white' }}
                       >

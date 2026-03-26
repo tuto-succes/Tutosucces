@@ -2,91 +2,164 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Calendar, Clock, CheckCircle, DollarSign, FileText, User, BookOpen, Video } from 'lucide-react';
-import { mockSessions, type Session } from '../utils/mockData';
+import { Calendar, Clock, CheckCircle, DollarSign, User, BookOpen, Video, ChevronLeft, ChevronRight, Send } from 'lucide-react';
+import { supabase } from '../app/core/supabase.client';
+
+interface SessionRow {
+  id: string;
+  student_id: string;
+  tutor_id: string;
+  subject: string;
+  session_date: string;
+  start_time: string;
+  duration_minutes: number;
+  total_price: number;
+  status: string;
+  payment_status: string;
+  completed_at: string | null;
+  studentName: string;
+}
 
 interface TutorStats {
   tutorId: string;
   tutorName: string;
-  completedSessions: Session[];
-  upcomingSessions: Session[];
+  tutorEmail: string;
+  completedSessions: SessionRow[];
+  upcomingSessions: SessionRow[];
   totalHours: number;
   totalAmount: number;
-  hourlyRate: number;
+}
+
+// Returns the Monday of the week containing the given date
+function getMondayOf(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+const STORAGE_KEY = 'invoiced_tutors_by_week';
+
+function getStoredInvoiced(weekKey: string): Set<string> {
+  try {
+    const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    return new Set(all[weekKey] ?? []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveInvoiced(weekKey: string, ids: Set<string>) {
+  try {
+    const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    all[weekKey] = [...ids];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  } catch {}
 }
 
 export function AdminSchedulePage() {
-  const [selectedWeek, setSelectedWeek] = useState<'current' | 'last'>('current');
+  // weekOffset: 0 = current week, -1 = last week, -2 = 2 weeks ago, +1 = next week, etc.
+  const [weekOffset, setWeekOffset] = useState(0);
   const [tutorStats, setTutorStats] = useState<TutorStats[]>([]);
-  const [allSessions, setAllSessions] = useState<Session[]>([]);
-  const [selectedTutor, setSelectedTutor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [invoicedTutorIds, setInvoicedTutorIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    loadSessions();
-  }, []);
-
-  useEffect(() => {
-    calculateTutorStats();
-  }, [allSessions, selectedWeek]);
-
-  const loadSessions = () => {
-    // Charger les sessions depuis localStorage ou utiliser les données mock
-    const storedSessions = localStorage.getItem('sessions');
-    const sessions = storedSessions ? JSON.parse(storedSessions) : mockSessions;
-    setAllSessions(sessions);
-  };
-
-  const getWeekRange = (isLastWeek: boolean = false) => {
+  const getWeekRange = (offset: number = 0) => {
     const now = new Date();
-    const currentDay = now.getDay();
-    const diff = currentDay === 0 ? -6 : 1 - currentDay; // Lundi de cette semaine
-    
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + diff + (isLastWeek ? -7 : 0));
-    monday.setHours(0, 0, 0, 0);
-    
+    const monday = getMondayOf(now);
+    monday.setDate(monday.getDate() + offset * 7);
+
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     sunday.setHours(23, 59, 59, 999);
-    
+
     return { monday, sunday };
   };
 
-  const calculateTutorStats = () => {
-    const { monday, sunday } = getWeekRange(selectedWeek === 'last');
-    
-    const weekSessions = allSessions.filter(session => {
-      const sessionDate = new Date(session.date);
-      return sessionDate >= monday && sessionDate <= sunday;
-    });
+  const weekKey = (offset: number) => {
+    const { monday } = getWeekRange(offset);
+    return monday.toISOString().split('T')[0];
+  };
+
+  useEffect(() => {
+    setInvoicedTutorIds(getStoredInvoiced(weekKey(weekOffset)));
+    loadSessions();
+  }, [weekOffset]);
+
+  const loadSessions = async () => {
+    setLoading(true);
+    const { monday, sunday } = getWeekRange(weekOffset);
+    const dateFrom = monday.toISOString().split('T')[0];
+    const dateTo = sunday.toISOString().split('T')[0];
+
+    const { data: sessions, error } = await supabase
+      .from('sessions')
+      .select('id, student_id, tutor_id, subject, session_date, start_time, duration_minutes, total_price, payment_status, completed_at, status')
+      .gte('session_date', dateFrom)
+      .lte('session_date', dateTo)
+      .order('session_date', { ascending: true });
+
+    if (error) {
+      console.error('Erreur chargement sessions:', error);
+      setLoading(false);
+      return;
+    }
+
+    if (!sessions || sessions.length === 0) {
+      setTutorStats([]);
+      setLoading(false);
+      return;
+    }
+
+    const tutorIds = [...new Set(sessions.map((s: any) => s.tutor_id))];
+    const studentIds = [...new Set(sessions.map((s: any) => s.student_id))];
+    const profileIds = [...new Set([...tutorIds, ...studentIds])];
+
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, name, email')
+      .in('id', profileIds);
+
+    const profileMap: Record<string, any> = {};
+    (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
 
     const tutorMap = new Map<string, TutorStats>();
 
-    weekSessions.forEach(session => {
-      if (!tutorMap.has(session.tutorId)) {
-        tutorMap.set(session.tutorId, {
-          tutorId: session.tutorId,
-          tutorName: session.tutorName,
+    (sessions as any[]).forEach(session => {
+      const tutorProfile = profileMap[session.tutor_id] || {};
+      const studentProfile = profileMap[session.student_id] || {};
+      const duration = (session.duration_minutes || 0) / 60;
+
+      if (!tutorMap.has(session.tutor_id)) {
+        tutorMap.set(session.tutor_id, {
+          tutorId: session.tutor_id,
+          tutorName: tutorProfile.name || 'Tuteur',
+          tutorEmail: tutorProfile.email || '',
           completedSessions: [],
           upcomingSessions: [],
           totalHours: 0,
           totalAmount: 0,
-          hourlyRate: 55, // Taux par défaut, peut être personnalisé par tuteur
         });
       }
 
-      const stats = tutorMap.get(session.tutorId)!;
-      
+      const TUTOR_RATE = 30; // Le tuteur reçoit toujours 30$/h
+
+      const stats = tutorMap.get(session.tutor_id)!;
+      const sessionWithName: SessionRow = { ...session, studentName: studentProfile.name || 'Élève' };
+
       if (session.status === 'completed') {
-        stats.completedSessions.push(session);
-        stats.totalHours += session.duration;
-        stats.totalAmount += session.duration * stats.hourlyRate;
-      } else if (session.status === 'scheduled') {
-        stats.upcomingSessions.push(session);
+        stats.completedSessions.push(sessionWithName);
+        stats.totalHours += duration;
+        stats.totalAmount += duration * TUTOR_RATE; // Montant versé au tuteur
+      } else {
+        stats.upcomingSessions.push(sessionWithName);
       }
     });
 
     setTutorStats(Array.from(tutorMap.values()));
+    setLoading(false);
   };
 
   const formatDate = (dateString: string) => {
@@ -98,128 +171,118 @@ export function AdminSchedulePage() {
     }).format(new Date(dateString));
   };
 
-  const formatTime = (timeString: string) => {
-    return timeString;
+  const formatWeekLabel = () => {
+    if (weekOffset === 0) return 'Semaine actuelle';
+    if (weekOffset === -1) return 'Semaine dernière';
+    if (weekOffset === 1) return 'Semaine prochaine';
+    if (weekOffset < 0) return `Il y a ${Math.abs(weekOffset)} semaines`;
+    return `Dans ${weekOffset} semaines`;
   };
 
-  const generateInvoice = (tutor: TutorStats) => {
-    const { monday, sunday } = getWeekRange(selectedWeek === 'last');
-    
-    const invoice = {
-      invoiceNumber: `INV-${tutor.tutorId}-${Date.now()}`,
-      tutorName: tutor.tutorName,
-      tutorId: tutor.tutorId,
-      weekStart: monday.toISOString(),
-      weekEnd: sunday.toISOString(),
-      sessions: tutor.completedSessions.map(s => ({
-        date: s.date,
-        time: s.time,
-        duration: s.duration,
-        student: s.studentName,
-        subject: s.subject,
-        amount: s.duration * tutor.hourlyRate
-      })),
-      totalHours: tutor.totalHours,
-      hourlyRate: tutor.hourlyRate,
-      totalAmount: tutor.totalAmount,
-      generatedAt: new Date().toISOString(),
-      status: 'pending'
-    };
-
-    // Sauvegarder la facture
-    const invoices = JSON.parse(localStorage.getItem('tutorInvoices') || '[]');
-    invoices.push(invoice);
-    localStorage.setItem('tutorInvoices', JSON.stringify(invoices));
-
-    // Générer le contenu de la facture pour l'email
+  const generateInvoice = async (tutor: TutorStats) => {
+    const { monday, sunday } = getWeekRange(weekOffset);
     const weekStart = monday.toLocaleDateString('fr-CA');
     const weekEnd = sunday.toLocaleDateString('fr-CA');
-    
-    const emailBody = `Bonjour ${tutor.tutorName},
+    const periodStart = monday.toISOString().split('T')[0];
+    const periodEnd = sunday.toISOString().split('T')[0];
 
-Voici votre facture pour la semaine du ${weekStart} au ${weekEnd}.
+    const TUTOR_RATE = 30;
+    const invoiceNumber = `INV-${tutor.tutorId.slice(0, 8).toUpperCase()}-${periodStart.replace(/-/g, '')}`;
 
-Numéro de facture: ${invoice.invoiceNumber}
-Période: ${weekStart} - ${weekEnd}
+    // 1. Sauvegarder dans tutor_payouts (status = 'paid' car c'est déjà versé)
+    const { error } = await supabase.from('tutor_payouts').insert({
+      tutor_id: tutor.tutorId,
+      amount: tutor.totalAmount,
+      period_start: periodStart,
+      period_end: periodEnd,
+      session_ids: tutor.completedSessions.map(s => s.id),
+      status: 'paid',
+      paid_at: new Date().toISOString(),
+      notes: `Fiche ${invoiceNumber} — ${tutor.completedSessions.length} séance(s) · ${tutor.totalHours.toFixed(1)}h`,
+    });
 
-DÉTAIL DES SESSIONS:
-${invoice.sessions.map((s, i) => `
-${i + 1}. ${new Date(s.date).toLocaleDateString('fr-CA')} à ${s.time}
-   Élève: ${s.student}
-   Matière: ${s.subject}
-   Durée: ${s.duration}h @ ${tutor.hourlyRate}$/h
-   Montant: ${s.amount.toFixed(2)}$`).join('\n')}
+    if (error) {
+      console.error('Erreur création fiche de paie:', error);
+      alert(`Erreur: impossible de créer la fiche de paie — ${error.message}`);
+      return;
+    }
 
-RÉCAPITULATIF:
-Nombre de sessions: ${invoice.sessions.length}
-Heures totales: ${tutor.totalHours.toFixed(1)}h
-Taux horaire: ${tutor.hourlyRate.toFixed(2)}$/h
+    // 2. Envoyer l'email
+    const emailBody = `Bonjour ${tutor.tutorName},\n\nVoici votre fiche de paie pour la semaine du ${weekStart} au ${weekEnd}.\n\nNuméro: ${invoiceNumber}\nPériode: ${weekStart} — ${weekEnd}\nTaux horaire: ${TUTOR_RATE}$/h\n\nDÉTAIL DES SESSIONS:\n${
+      tutor.completedSessions.map((s, i) => {
+        const hours = ((s.duration_minutes || 0) / 60);
+        const pay = (hours * TUTOR_RATE).toFixed(2);
+        return `\n${i + 1}. ${new Date(s.session_date).toLocaleDateString('fr-CA')} à ${s.start_time}\n   Élève : ${s.studentName}\n   Matière : ${s.subject}\n   Durée : ${hours.toFixed(1)}h × ${TUTOR_RATE}$/h = ${pay}$`;
+      }).join('\n')
+    }\n\nRÉCAPITULATIF:\nNombre de sessions : ${tutor.completedSessions.length}\nHeures totales : ${tutor.totalHours.toFixed(1)}h\nTaux horaire : ${TUTOR_RATE}$/h\n\nMONTANT TOTAL : ${tutor.totalAmount.toFixed(2)}$\n\nMerci de votre excellent travail !\n\nCordialement,\nL'équipe Tuto-Succès B&D\ntutosuccesbd@gmail.com\n514-651-2401`;
 
-MONTANT TOTAL: ${tutor.totalAmount.toFixed(2)}$
-
-Le paiement sera effectué dans les prochains jours.
-
-Merci de votre excellent travail !
-
-Cordialement,
-L'équipe Tuto-Succès B&D
-tutosuccesbd@gmail.com
-514-651-2401`;
-
-    // Trouver l'email du tuteur
-    const users = JSON.parse(localStorage.getItem('mockUsers') || '[]');
-    const tutorUser = users.find((u: any) => u.id === tutor.tutorId);
-    const tutorEmail = tutorUser?.email || '';
-
-    // Ouvrir le client email avec le contenu pré-rempli
-    const subject = encodeURIComponent(`Facture ${invoice.invoiceNumber} - Tuto-Succès B&D`);
+    const subject = encodeURIComponent(`Fiche de paie ${invoiceNumber} — Semaine du ${weekStart} | Tuto-Succès B&D`);
     const body = encodeURIComponent(emailBody);
-    window.location.href = `mailto:${tutorEmail}?subject=${subject}&body=${body}`;
+    window.location.href = `mailto:${tutor.tutorEmail}?subject=${subject}&body=${body}`;
 
-    alert(`Facture générée pour ${tutor.tutorName}\nMontant total: ${tutor.totalAmount.toFixed(2)}$\n\nUn email va être envoyé au tuteur.`);
+    // 3. Retirer de la liste locale
+    setInvoicedTutorIds(prev => {
+      const next = new Set([...prev, tutor.tutorId]);
+      saveInvoiced(weekKey(weekOffset), next);
+      return next;
+    });
   };
 
-  const { monday, sunday } = getWeekRange(selectedWeek === 'last');
-  const totalWeeklyAmount = tutorStats.reduce((sum, stat) => sum + stat.totalAmount, 0);
-  const totalWeeklyHours = tutorStats.reduce((sum, stat) => sum + stat.totalHours, 0);
+  const { monday, sunday } = getWeekRange(weekOffset);
+  const visibleStats = tutorStats.filter(t => !invoicedTutorIds.has(t.tutorId));
+  const totalWeeklyAmount = visibleStats.reduce((sum, stat) => sum + stat.totalAmount, 0);
+  const totalWeeklyHours = visibleStats.reduce((sum, stat) => sum + stat.totalHours, 0);
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
       <div>
         <h2 className="text-3xl font-bold" style={{ color: '#2C3E50' }}>
           Calendrier et Facturation
         </h2>
         <p style={{ color: '#7F8C8D' }}>
-          Gérez les sessions de tutorat et générez les factures hebdomadaires
+          Gérez les sessions de tutorat et envoyez les factures hebdomadaires aux tuteurs
         </p>
       </div>
 
       {/* Sélecteur de semaine */}
       <Card>
         <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex gap-3">
-              <Button
-                variant={selectedWeek === 'current' ? 'default' : 'outline'}
-                onClick={() => setSelectedWeek('current')}
-                style={selectedWeek === 'current' ? { backgroundColor: '#2E5CA8', color: 'white' } : {}}
-              >
-                Semaine actuelle
-              </Button>
-              <Button
-                variant={selectedWeek === 'last' ? 'default' : 'outline'}
-                onClick={() => setSelectedWeek('last')}
-                style={selectedWeek === 'last' ? { backgroundColor: '#2E5CA8', color: 'white' } : {}}
-              >
-                Semaine dernière
-              </Button>
-            </div>
-            <div className="text-right">
-              <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                {monday.toLocaleDateString('fr-CA')} - {sunday.toLocaleDateString('fr-CA')}
+          <div className="flex items-center justify-between gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setWeekOffset(w => w - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+
+            <div className="flex-1 text-center">
+              <p className="font-semibold text-base" style={{ color: '#2C3E50' }}>
+                {formatWeekLabel()}
+              </p>
+              <p className="text-sm mt-1" style={{ color: '#7F8C8D' }}>
+                {monday.toLocaleDateString('fr-CA', { day: 'numeric', month: 'long' })} — {sunday.toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric' })}
               </p>
             </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setWeekOffset(w => w + 1)}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+
+            {weekOffset !== 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setWeekOffset(0)}
+                style={{ borderColor: '#2E5CA8', color: '#2E5CA8' }}
+              >
+                Aujourd'hui
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -267,7 +330,7 @@ tutosuccesbd@gmail.com
               <div>
                 <p className="text-sm" style={{ color: '#7F8C8D' }}>Sessions complétées</p>
                 <p className="text-2xl font-bold" style={{ color: '#2C3E50' }}>
-                  {tutorStats.reduce((sum, stat) => sum + stat.completedSessions.length, 0)}
+                  {visibleStats.reduce((sum, stat) => sum + stat.completedSessions.length, 0)}
                 </p>
               </div>
             </div>
@@ -275,19 +338,37 @@ tutosuccesbd@gmail.com
         </Card>
       </div>
 
-      {/* Liste des tuteurs et sessions */}
-      {tutorStats.length === 0 ? (
+      {/* Tuteurs facturés dans cette session */}
+      {invoicedTutorIds.size > 0 && (
+        <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: '#D1FAE5' }}>
+          <CheckCircle className="h-5 w-5" style={{ color: '#10b981' }} />
+          <p className="text-sm font-medium" style={{ color: '#10b981' }}>
+            {invoicedTutorIds.size} facture(s) envoyée(s) — les tuteurs concernés ont été retirés de la liste
+          </p>
+        </div>
+      )}
+
+      {/* Liste des tuteurs */}
+      {loading ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <p style={{ color: '#7F8C8D' }}>Chargement des sessions...</p>
+          </CardContent>
+        </Card>
+      ) : visibleStats.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
             <Calendar className="h-16 w-16 mx-auto mb-4 opacity-20" style={{ color: '#7F8C8D' }} />
             <p className="text-lg" style={{ color: '#7F8C8D' }}>
-              Aucune session pour cette semaine
+              {tutorStats.length > 0
+                ? 'Toutes les factures de cette semaine ont été envoyées'
+                : 'Aucune session pour cette semaine'}
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-6">
-          {tutorStats.map((tutor) => (
+          {visibleStats.map((tutor) => (
             <Card key={tutor.tutorId}>
               <CardHeader>
                 <div className="flex items-start justify-between">
@@ -298,22 +379,30 @@ tutosuccesbd@gmail.com
                         {tutor.tutorName}
                       </div>
                     </CardTitle>
-                    <CardDescription className="mt-2">
+                    <CardDescription className="mt-1">
+                      {tutor.tutorEmail}
+                    </CardDescription>
+                    <CardDescription className="mt-1">
                       {tutor.completedSessions.length} session(s) complétée(s) • {tutor.upcomingSessions.length} à venir
                     </CardDescription>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right space-y-1">
                     <p className="text-2xl font-bold" style={{ color: '#E74C3C' }}>
-                      {tutor.totalAmount.toFixed(2)}$
+                      {tutor.totalAmount.toFixed(2)}$ <span className="text-sm font-normal text-gray-500">versé tuteur</span>
                     </p>
                     <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                      {tutor.totalHours.toFixed(1)} heures @ {tutor.hourlyRate}$/h
+                      {tutor.totalHours.toFixed(1)}h × 30$/h
+                    </p>
+                    <p className="text-xs text-green-600">
+                      Encaissé élèves : {tutor.completedSessions.reduce((s, x) => s + (x.total_price || 0), 0).toFixed(2)}$
+                    </p>
+                    <p className="text-xs text-blue-600">
+                      Marge compagnie : {(tutor.completedSessions.reduce((s, x) => s + (x.total_price || 0), 0) - tutor.totalAmount).toFixed(2)}$
                     </p>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Sessions complétées */}
                 {tutor.completedSessions.length > 0 && (
                   <div>
                     <h4 className="font-semibold mb-3 flex items-center gap-2" style={{ color: '#2C3E50' }}>
@@ -332,20 +421,20 @@ tutosuccesbd@gmail.com
                               <BookOpen className="h-4 w-4" style={{ color: '#2E5CA8' }} />
                               <div>
                                 <p className="font-medium" style={{ color: '#2C3E50' }}>
-                                  {session.subject} - {session.studentName}
+                                  {session.subject} — {session.studentName}
                                 </p>
                                 <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                                  {formatDate(session.date)} à {formatTime(session.time)}
+                                  {formatDate(session.session_date)} à {session.start_time}
                                 </p>
                               </div>
                             </div>
                           </div>
                           <div className="text-right">
                             <p className="font-semibold" style={{ color: '#E74C3C' }}>
-                              {(session.duration * tutor.hourlyRate).toFixed(2)}$
+                              {Number(session.total_price || 0).toFixed(2)}$
                             </p>
                             <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                              {session.duration}h
+                              {((session.duration_minutes || 0) / 60).toFixed(1)}h
                             </p>
                           </div>
                         </div>
@@ -354,7 +443,6 @@ tutosuccesbd@gmail.com
                   </div>
                 )}
 
-                {/* Sessions à venir */}
                 {tutor.upcomingSessions.length > 0 && (
                   <div>
                     <h4 className="font-semibold mb-3 flex items-center gap-2" style={{ color: '#2C3E50' }}>
@@ -372,10 +460,10 @@ tutosuccesbd@gmail.com
                             <Video className="h-4 w-4" style={{ color: '#2E5CA8' }} />
                             <div>
                               <p className="font-medium" style={{ color: '#2C3E50' }}>
-                                {session.subject} - {session.studentName}
+                                {session.subject} — {session.studentName}
                               </p>
                               <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                                {formatDate(session.date)} à {formatTime(session.time)}
+                                {formatDate(session.session_date)} à {session.start_time}
                               </p>
                             </div>
                           </div>
@@ -388,7 +476,6 @@ tutosuccesbd@gmail.com
                   </div>
                 )}
 
-                {/* Actions */}
                 {tutor.completedSessions.length > 0 && (
                   <div className="flex gap-3 pt-4 border-t">
                     <Button
@@ -396,18 +483,8 @@ tutosuccesbd@gmail.com
                       className="flex-1"
                       style={{ backgroundColor: '#E74C3C', color: 'white' }}
                     >
-                      <FileText className="h-4 w-4 mr-2" />
-                      Générer la facture ({tutor.totalAmount.toFixed(2)}$)
-                    </Button>
-                    <Button
-                      variant="outline"
-                      style={{ borderColor: '#2E5CA8', color: '#2E5CA8' }}
-                      onClick={() => {
-                        alert('Intégration Stripe à venir pour le paiement automatique');
-                      }}
-                    >
-                      <DollarSign className="h-4 w-4 mr-2" />
-                      Marquer comme payé
+                      <Send className="h-4 w-4 mr-2" />
+                      Envoyer la fiche de paie du tuteur ({tutor.totalAmount.toFixed(2)}$)
                     </Button>
                   </div>
                 )}

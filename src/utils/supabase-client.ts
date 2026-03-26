@@ -1,13 +1,7 @@
 /**
  * Client Supabase - Instance unique pour toute l'application
  */
-import { createClient } from '@supabase/supabase-js';
-import { projectId, publicAnonKey } from './supabase/info';
-
-const supabaseUrl = `https://${projectId}.supabase.co`;
-const supabaseKey = publicAnonKey;
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
+import { supabase } from '../app/core/supabase.client';
 
 /**
  * Types de la base de données
@@ -46,29 +40,45 @@ export const auth = {
 
     console.log('✅ Auth réussie');
 
-    // 2. Récupérer le profil
+    // 2. Récupérer le profil par ID
+    console.log('🔍 Recherche profil pour auth.uid =', authData.user.id);
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
-      .eq('email', email)
-      .single();
+      .eq('id', authData.user.id)
+      .maybeSingle();
 
-    if (profileError || !profile) {
-      console.error('❌ Profil non trouvé:', profileError);
-      throw new Error('Profil non trouvé');
+    console.log('📋 Résultat profil par ID:', profile, 'erreur:', profileError);
+
+    // Fallback: chercher par email si pas trouvé par ID
+    let finalProfile = profile;
+    if (!finalProfile) {
+      console.log('⚠️ Profil pas trouvé par ID, essai par email...');
+      const { data: profileByEmail, error: emailError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('email', email)
+        .maybeSingle();
+      console.log('📋 Résultat profil par email:', profileByEmail, 'erreur:', emailError);
+      finalProfile = profileByEmail;
+    }
+
+    if (!finalProfile) {
+      console.error('❌ Aucun profil trouvé pour:', email, 'auth id:', authData.user.id);
+      throw new Error(`Profil non trouvé pour ${email}. Vérifiez que votre compte est bien configuré.`);
     }
 
     console.log('✅ Profil récupéré:', profile.role);
 
     // 3. Sauvegarder en local
     const userData = {
-      id: profile.id,
-      email: profile.email,
-      name: profile.name,
-      role: profile.role,
-      phone: profile.phone,
-      avatar_url: profile.avatar_url,
-      access_token: authData.session.access_token,
+      id: finalProfile.id,
+      email: finalProfile.email,
+      name: finalProfile.name,
+      role: finalProfile.role,
+      phone: finalProfile.phone,
+      avatar_url: finalProfile.avatar_url,
+      access_token: authData.session?.access_token,
     };
 
     localStorage.setItem('user', JSON.stringify(userData));

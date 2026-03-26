@@ -13,7 +13,7 @@ app.use(
   "/*",
   cors({
     origin: "*",
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: ["Content-Type", "Authorization", "apikey", "x-client-info"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
     maxAge: 600,
@@ -143,8 +143,9 @@ app.get("/make-server-385c5805/profile", async (c) => {
 
 app.post("/make-server-385c5805/create-user", async (c) => {
   try {
-    const { email, password, name, role } = await c.req.json();
-    
+    const body = await c.req.json();
+    const { email, password, name, role, phone, bio, rate, subjects, levels, student_level } = body;
+
     console.log('👤 Creating user:', email, 'with role:', role);
 
     // 1. Create user in Supabase Auth
@@ -163,18 +164,62 @@ app.post("/make-server-385c5805/create-user", async (c) => {
 
     console.log('✅ Auth user created:', authData.user.id);
 
-    // 2. Create profile in database
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .insert({
+    // 2. Create profile in database with all fields
+    const createdAt = new Date().toISOString();
+    let profile = null;
+    let profileError = null;
+
+    const extendedFields: Record<string, any> = {};
+    if (phone) extendedFields.phone = phone;
+    if (subjects?.length) extendedFields.subjects = subjects;
+    if (levels?.length) extendedFields.levels = levels;
+    if (bio) extendedFields.bio = bio;
+    if (rate != null) extendedFields.rate = rate;
+    if (student_level) extendedFields.student_level = student_level;
+
+    const profilePayloads = [
+      {
+        id: authData.user.id,
+        user_id: authData.user.id,
+        email,
+        name,
+        role,
+        created_at: createdAt,
+        ...extendedFields
+      },
+      {
         id: authData.user.id,
         email,
         name,
         role,
-        created_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+        created_at: createdAt,
+        ...extendedFields
+      },
+      {
+        user_id: authData.user.id,
+        email,
+        name,
+        role,
+        created_at: createdAt,
+        ...extendedFields
+      }
+    ];
+
+    for (const payload of profilePayloads) {
+      const result = await supabase
+        .from('profiles')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (!result.error) {
+        profile = result.data;
+        profileError = null;
+        break;
+      }
+
+      profileError = result.error;
+    }
 
     if (profileError) {
       console.error('❌ Profile creation error:', profileError.message);
@@ -232,16 +277,49 @@ app.post("/make-server-385c5805/create-test-users", async (c) => {
         }
 
         // 2. Create profile in database
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .insert({
+        let profile = null;
+        let profileError = null;
+
+        const profilePayloads = [
+          {
+            id: authData.user.id,
+            user_id: authData.user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            created_at: new Date().toISOString()
+          },
+          {
             id: authData.user.id,
             email: user.email,
             name: user.name,
             role: user.role,
-          })
-          .select()
-          .single();
+            created_at: new Date().toISOString()
+          },
+          {
+            user_id: authData.user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            created_at: new Date().toISOString()
+          }
+        ];
+
+        for (const payload of profilePayloads) {
+          const result = await supabase
+            .from('profiles')
+            .insert(payload)
+            .select()
+            .single();
+
+          if (!result.error) {
+            profile = result.data;
+            profileError = null;
+            break;
+          }
+
+          profileError = result.error;
+        }
 
         if (profileError) {
           errors.push({ email: user.email, error: profileError.message });

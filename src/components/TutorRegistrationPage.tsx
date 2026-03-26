@@ -3,6 +3,7 @@ import { ArrowLeft, Upload, X, GraduationCap } from 'lucide-react';
 import { Button } from './ui/button';
 import logoImg from 'figma:asset/bf7daf7f4d90880ea5fa593b28754dac8a736020.png';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { supabase } from '../app/core/supabase.client';
 import { Footer } from './Footer';
 
 interface TutorRegistrationPageProps {
@@ -55,7 +56,8 @@ export function TutorRegistrationPage({ onBack, onNavigateToContact }: TutorRegi
     primaire: ['Mathématiques', 'Sciences', 'Français', 'Anglais'],
     secondaire: ['Mathématiques', 'Sciences', 'Physique', 'Chimie', 'Français', 'Anglais'],
     cegep: [
-      'Calcul I et Calcul II',
+      'Calcul I',
+      'Calcul II',
       'Algèbre linéaire',
       'Chimie générale',
       'Chimie des solutions',
@@ -169,6 +171,85 @@ export function TutorRegistrationPage({ onBack, onNavigateToContact }: TutorRegi
     setIsSubmitting(true);
     setSubmitSuccess(false);
     setSubmitError('');
+
+    const levelLabels: Record<NiveauKey, string> = {
+      primaire: 'Primaire',
+      secondaire: 'Secondaire',
+      cegep: 'CÉGEP',
+    };
+
+    const levels = form.niveaux.map((niveau) => levelLabels[niveau]);
+    const subjects = Array.from(new Set(form.niveaux.flatMap((niveau) => form.matieresByNiveau[niveau])));
+    const notes = [
+      form.heures ? `Disponibilité souhaitée: ${form.heures}` : null,
+      form.cv ? `CV fourni: ${form.cv.name}` : null,
+      ...form.niveaux.map((niveau) => {
+        const levelName = levelLabels[niveau];
+        const levelSubjects = form.matieresByNiveau[niveau];
+        return levelSubjects.length > 0 ? `${levelName}: ${levelSubjects.join(', ')}` : null;
+      }),
+    ].filter(Boolean).join('\n');
+
+    try {
+      // Upload CV to Supabase Storage
+      let cvUrl: string | null = null;
+      if (form.cv) {
+        const fileName = `${Date.now()}_${form.cv.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('cvs')
+          .upload(fileName, form.cv, { contentType: form.cv.type });
+        if (uploadError) {
+          console.error('Erreur upload CV:', uploadError);
+          throw new Error(`Impossible d'envoyer le CV : ${uploadError.message}. Vérifiez que le bucket "cvs" existe dans Supabase Storage.`);
+        }
+        if (uploadData) {
+          const { data: urlData } = supabase.storage.from('cvs').getPublicUrl(uploadData.path);
+          cvUrl = urlData.publicUrl;
+        }
+      }
+
+      const { error } = await supabase
+        .from('tutor_applications')
+        .insert({
+          name: `${form.prenom} ${form.nom}`.trim(),
+          email: form.email,
+          phone: form.telephone,
+          subjects,
+          levels,
+          experience: `Candidature envoyée depuis le formulaire public. Disponibilité: ${form.heures || 'Non précisée'}.`,
+          notes: notes || null,
+          cv_url: cvUrl,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      setSubmitSuccess(true);
+      setForm({
+        prenom: '',
+        nom: '',
+        email: '',
+        telephone: '',
+        niveaux: [],
+        heures: '',
+        matieresByNiveau: {
+          primaire: [],
+          secondaire: [],
+          cegep: []
+        },
+        cv: null
+      });
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => setSubmitSuccess(false), 8000);
+      setIsSubmitting(false);
+      return;
+    } catch (directInsertError) {
+      console.error('Insertion directe tutor_applications impossible, fallback serveur :', directInsertError);
+    }
 
     try {
       console.log('Envoi de la candidature tuteur au serveur...');

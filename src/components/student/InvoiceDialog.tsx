@@ -2,75 +2,62 @@ import { Download, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Separator } from '../ui/separator';
+import type { SiteInvoice } from '../../utils/invoiceHelpers';
 
 interface InvoiceDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  payment: any;
-  sessions?: any[];
+  invoice: SiteInvoice | null;
 }
 
-export function InvoiceDialog({ isOpen, onClose, payment, sessions = [] }: InvoiceDialogProps) {
-  // Informations de la compagnie
-  const companyInfo = {
-    name: "Tuto-Succès B&D",
-    address: "En Ligne",
-    phone: "514-651-2401",
-    email: "tutosuccesbd@gmail.com",
-    website: "www.tutosuccesbd.com",
-    registrationNumber: "514-651-2401"
-  };
+const companyInfo = {
+  name: 'Tuto-Succès B&D',
+  address: 'En ligne',
+  phone: '514-651-2401',
+  email: 'tutosuccesbd@gmail.com',
+  website: 'www.tutosuccesbd.com',
+  registrationNumber: '514-651-2401',
+  paymentMethodsText: 'Visa, Mastercard ou Interac',
+};
 
-  // Génération du numéro de facture
-  const invoiceId = payment?.invoiceId || `TS-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 100000)).padStart(5, '0')}`;
-  const invoiceDate = payment?.date ? new Date(payment.date) : new Date();
-  const dueDate = new Date(invoiceDate);
-  dueDate.setDate(dueDate.getDate() + 7); // 7 jours après émission
-
-  // Calcul des totaux (pour l'instant sans taxes)
-  const subtotal = payment?.amount || 0;
-  const discountAmount = 0;
-  const taxRateGST = 0; // TPS - à configurer si inscrit
-  const taxRateQST = 0; // TVQ - à configurer si inscrit
-  const taxAmountGST = subtotal * taxRateGST;
-  const taxAmountQST = subtotal * taxRateQST;
-  const totalDue = subtotal - discountAmount + taxAmountGST + taxAmountQST;
-
-  const handlePrint = () => {
+export function InvoiceDialog({ isOpen, onClose, invoice }: InvoiceDialogProps) {
+  function handlePrint() {
     window.print();
-  };
+  }
+
+  if (!invoice) {
+    return null;
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between">
-            <DialogTitle>Facture de services de tutorat</DialogTitle>
+            <div>
+              <DialogTitle>Facture de services de tutorat</DialogTitle>
+              <DialogDescription>
+                Consultez votre facture détaillée et conservez-la pour vos dossiers.
+              </DialogDescription>
+            </div>
             <Button variant="ghost" size="sm" onClick={onClose}>
               <X className="h-4 w-4" />
             </Button>
           </div>
-          <DialogDescription>
-            Facture détaillée pour vos séances de tutorat
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 p-6 bg-white" id="invoice-content">
-          {/* En-tête avec logo/nom de la compagnie */}
-          <div className="text-center border-b pb-4">
-            <h1 className="text-3xl font-bold" style={{ color: '#E74C3C' }}>
-              {companyInfo.name}
-            </h1>
-            <p className="text-sm text-gray-600 mt-1">Facture de services de tutorat</p>
+        <div className="space-y-6 rounded-3xl border border-slate-200 bg-white p-6" id="invoice-content">
+          <div className="border-b border-slate-200 pb-5 text-center">
+            <h1 className="text-3xl font-bold text-slate-900">{companyInfo.name}</h1>
+            <p className="mt-1 text-sm text-slate-500">Facture de services de tutorat</p>
           </div>
 
-          {/* Informations compagnie et facture */}
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <h3 className="font-semibold text-sm mb-2" style={{ color: '#2E5CA8' }}>
-                Informations Tuto-Succès B&D
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">
+                Informations Tuto-Succes B&D
               </h3>
-              <div className="text-sm space-y-1 text-gray-700">
+              <div className="space-y-1 text-sm text-slate-600">
                 <p>{companyInfo.name}</p>
                 <p>{companyInfo.address}</p>
                 <p>Téléphone : {companyInfo.phone}</p>
@@ -80,172 +67,126 @@ export function InvoiceDialog({ isOpen, onClose, payment, sessions = [] }: Invoi
               </div>
             </div>
 
-            <div>
-              <h3 className="font-semibold text-sm mb-2" style={{ color: '#2E5CA8' }}>
+            <div className="rounded-2xl bg-blue-50 p-4">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">
                 Informations de la facture
               </h3>
-              <div className="text-sm space-y-1 text-gray-700">
-                <p><span className="font-medium">Numéro de facture :</span> {invoiceId}</p>
-                <p><span className="font-medium">Date d'émission :</span> {invoiceDate.toLocaleDateString('fr-FR')}</p>
-                <p><span className="font-medium">Date d'échéance :</span> {dueDate.toLocaleDateString('fr-FR')}</p>
-                <p>
-                  <span className="font-medium">Statut :</span>{' '}
-                  <span className={payment?.status === 'completed' ? 'text-green-600 font-semibold' : 'text-yellow-600'}>
-                    {payment?.status === 'completed' ? 'Payé' : 'À payer'}
-                  </span>
-                </p>
+              <div className="space-y-1 text-sm text-slate-600">
+                <p><strong>Numéro de facture :</strong> {invoice.invoiceId}</p>
+                <p><strong>Date d'émission :</strong> {new Date(invoice.invoiceDate).toLocaleDateString('fr-FR')}</p>
+                <p><strong>Date d'échéance :</strong> {new Date(invoice.dueDate).toLocaleDateString('fr-FR')}</p>
+                <p><strong>Statut :</strong> {invoice.paymentStatus}</p>
               </div>
             </div>
           </div>
 
-          {/* Informations client */}
-          <div>
-            <h3 className="font-semibold text-sm mb-2" style={{ color: '#2E5CA8' }}>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">
               Informations du client
             </h3>
-            <div className="text-sm space-y-1 text-gray-700 bg-gray-50 p-3 rounded">
-              <p><span className="font-medium">Nom du parent / responsable :</span> {payment?.clientName || 'À compléter'}</p>
-              <p><span className="font-medium">Adresse :</span> {payment?.clientAddress || 'À compléter'}</p>
-              <p><span className="font-medium">Courriel :</span> {payment?.clientEmail || 'À compléter'}</p>
-              <p><span className="font-medium">Élève(s) concerné(s) :</span> {payment?.studentName || 'À compléter'}</p>
+            <div className="space-y-1 text-sm text-slate-600">
+              <p><strong>Nom du parent / responsable :</strong> {invoice.clientName}</p>
+              <p><strong>Adresse :</strong> En ligne</p>
+              <p><strong>Courriel :</strong> {invoice.clientEmail}</p>
+              <p><strong>Élève(s) concerné(s) :</strong> {invoice.studentName}</p>
             </div>
           </div>
 
-          {/* Détails des séances */}
           <div>
-            <h3 className="font-semibold text-sm mb-2" style={{ color: '#2E5CA8' }}>
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">
               Détails des séances
             </h3>
-            <div className="border rounded-lg overflow-hidden">
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
               <table className="w-full text-sm">
-                <thead className="bg-gray-100">
+                <thead className="bg-slate-50 text-slate-600">
                   <tr>
-                    <th className="text-left p-3 font-medium">Date</th>
-                    <th className="text-left p-3 font-medium">Élève</th>
-                    <th className="text-left p-3 font-medium">Matière</th>
-                    <th className="text-right p-3 font-medium">Durée (h)</th>
-                    <th className="text-right p-3 font-medium">Tarif horaire</th>
-                    <th className="text-right p-3 font-medium">Montant</th>
+                    <th className="px-4 py-3 text-left font-medium">Date</th>
+                    <th className="px-4 py-3 text-left font-medium">Élève</th>
+                    <th className="px-4 py-3 text-left font-medium">Matière</th>
+                    <th className="px-4 py-3 text-right font-medium">Durée (h)</th>
+                    <th className="px-4 py-3 text-right font-medium">Tarif horaire</th>
+                    <th className="px-4 py-3 text-right font-medium">Montant</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sessions.length > 0 ? (
-                    sessions.map((session, idx) => (
-                      <tr key={idx} className="border-t">
-                        <td className="p-3">{new Date(session.date).toLocaleDateString('fr-FR')}</td>
-                        <td className="p-3">{session.student?.name || 'Élève'}</td>
-                        <td className="p-3">{session.subject}</td>
-                        <td className="text-right p-3">{session.duration}</td>
-                        <td className="text-right p-3">{session.rate || 50} $</td>
-                        <td className="text-right p-3">{((session.rate || 50) * session.duration).toFixed(2)} $</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr className="border-t">
-                      <td className="p-3">{invoiceDate.toLocaleDateString('fr-FR')}</td>
-                      <td className="p-3">{payment?.studentName || 'Élève'}</td>
-                      <td className="p-3">{payment?.subject || 'Tutorat'}</td>
-                      <td className="text-right p-3">{payment?.duration || 2}</td>
-                      <td className="text-right p-3">{payment?.rate || 50} $</td>
-                      <td className="text-right p-3">{payment?.amount?.toFixed(2) || '0.00'} $</td>
+                  {invoice.lineItems.map((item, index) => (
+                    <tr key={`${item.date}-${index}`} className="border-t border-slate-200">
+                      <td className="px-4 py-3">{new Date(item.date).toLocaleDateString('fr-FR')}</td>
+                      <td className="px-4 py-3">{item.studentName}</td>
+                      <td className="px-4 py-3">{item.subject}</td>
+                      <td className="px-4 py-3 text-right">{item.durationHours}</td>
+                      <td className="px-4 py-3 text-right">{item.rate.toFixed(2)} $</td>
+                      <td className="px-4 py-3 text-right font-medium">{item.total.toFixed(2)} $</td>
                     </tr>
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>
           </div>
 
-          {/* Totaux */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
+          <div className="rounded-2xl bg-slate-50 p-4">
+            <div className="ml-auto max-w-md space-y-2 text-sm text-slate-600">
+              <div className="flex justify-between">
                 <span>Sous-total :</span>
-                <span>{subtotal.toFixed(2)} $ CAD</span>
+                <span>{invoice.subtotal.toFixed(2)} $</span>
               </div>
-              {discountAmount > 0 && (
-                <div className="flex justify-between text-sm text-green-600">
-                  <span>Rabais :</span>
-                  <span>-{discountAmount.toFixed(2)} $</span>
-                </div>
-              )}
-              {taxAmountGST > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span>TPS ({(taxRateGST * 100).toFixed(1)}%) :</span>
-                  <span>{taxAmountGST.toFixed(2)} $</span>
-                </div>
-              )}
-              {taxAmountQST > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span>TVQ ({(taxRateQST * 100).toFixed(1)}%) :</span>
-                  <span>{taxAmountQST.toFixed(2)} $</span>
-                </div>
-              )}
-              <Separator className="my-2" />
-              <div className="flex justify-between text-lg font-bold">
+              <div className="flex justify-between">
+                <span>Rabais :</span>
+                <span>{invoice.discountAmount.toFixed(2)} $</span>
+              </div>
+              <div className="flex justify-between">
+                <span>TPS :</span>
+                <span>{invoice.taxAmountGST.toFixed(2)} $</span>
+              </div>
+              <div className="flex justify-between">
+                <span>TVQ :</span>
+                <span>{invoice.taxAmountQST.toFixed(2)} $</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between text-lg font-bold text-slate-900">
                 <span>Total à payer :</span>
-                <span style={{ color: '#E74C3C' }}>{totalDue.toFixed(2)} $ CAD</span>
+                <span>{invoice.totalDue.toFixed(2)} $</span>
               </div>
             </div>
           </div>
 
-          {/* Modes de paiement */}
-          <div>
-            <h3 className="font-semibold text-sm mb-2" style={{ color: '#2E5CA8' }}>
-              Modes de paiement
-            </h3>
-            <div className="text-sm text-gray-700 space-y-2 bg-blue-50 p-3 rounded">
-              <p>Le paiement peut être effectué de la manière suivante :</p>
-              <ul className="list-disc list-inside space-y-1 ml-2">
-                <li>Carte de crédit : Visa ou Mastercard</li>
-                <li>Interac (virement ou débit) : {companyInfo.email}</li>
-              </ul>
-              {payment?.status !== 'completed' && (
-                <div className="mt-3">
-                  <Button 
-                    className="w-full" 
-                    style={{ backgroundColor: '#2E5CA8' }}
-                    onClick={() => alert('Redirection vers le système de paiement (à configurer)')}
-                  >
-                    Payer maintenant
-                  </Button>
-                </div>
-              )}
-            </div>
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-slate-700">
+            <h3 className="mb-2 font-semibold text-slate-900">Modes de paiement</h3>
+            <p>{companyInfo.paymentMethodsText}</p>
+            <p className="mt-2">Interac : {companyInfo.email}</p>
+            {invoice.paymentLinkUrl ? (
+              <p className="mt-3 text-slate-600">
+                Un lien de paiement Stripe sera utilise ici plus tard : {invoice.paymentLinkUrl}
+              </p>
+            ) : (
+              <p className="mt-3 text-slate-600">
+                Le lien de paiement Stripe pourra être ajouté plus tard sans changer le format de la facture.
+              </p>
+            )}
           </div>
 
-          {/* Conditions de paiement */}
-          <div className="text-sm text-gray-600 space-y-2">
+          <div className="space-y-2 text-sm text-slate-600">
             <p>
-              <span className="font-medium">Conditions de paiement :</span><br />
-              Merci d'effectuer le paiement au plus tard le {dueDate.toLocaleDateString('fr-FR')}.
+              <strong>Conditions de paiement :</strong> Merci d'effectuer le paiement au plus tard le{' '}
+              {new Date(invoice.dueDate).toLocaleDateString('fr-FR')}.
             </p>
             <p>
-              Pour toute question concernant cette facture ou les séances de tutorat, vous pouvez nous joindre à{' '}
-              <a href={`mailto:${companyInfo.email}`} className="text-blue-600 hover:underline">
-                {companyInfo.email}
-              </a>
-              {' '}ou au {companyInfo.phone}.
+              Pour toute question concernant cette facture ou les séances de tutorat, vous pouvez nous joindre à {companyInfo.email} ou au {companyInfo.phone}.
             </p>
           </div>
 
-          {/* Message de remerciement */}
-          <div className="text-center border-t pt-4 mt-6">
-            <p className="font-semibold" style={{ color: '#2C3E50' }}>
-              Merci de votre confiance envers Tuto-Succès B&D.
-            </p>
-            <p className="text-sm text-gray-600 italic mt-1">
+          <div className="border-t border-slate-200 pt-4 text-center">
+            <p className="font-medium text-slate-900">Merci de votre confiance envers Tuto-Succès B&D.</p>
+            <p className="mt-1 text-sm text-slate-500">
               L'effort, la persévérance et l'encadrement mènent à la réussite.
             </p>
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex gap-3 justify-end border-t pt-4">
-          <Button variant="outline" onClick={onClose}>
-            Fermer
-          </Button>
-          <Button onClick={handlePrint} style={{ backgroundColor: '#2E5CA8' }}>
-            <Download className="h-4 w-4 mr-2" />
+        <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+          <Button onClick={handlePrint} className="bg-[#2E5CA8] text-white hover:bg-[#254b8b]">
+            <Download className="mr-2 h-4 w-4" />
             Télécharger / Imprimer
           </Button>
         </div>

@@ -58,7 +58,7 @@ export default function App() {
   }
 
   const handleContactNavigation = () => {
-    setCurrentPage('contact-simple');
+    setCurrentPage('contact');
   };
 
   const handleInscriptionEleve = () => {

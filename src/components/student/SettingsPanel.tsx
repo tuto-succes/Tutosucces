@@ -7,7 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Alert, AlertDescription } from '../ui/alert';
 import { InvoicesPanel } from '../shared/InvoicesPanel';
-import { getMockUserProfile, simulateNetworkDelay } from '../../utils/mockData';
+import { simulateNetworkDelay } from '../../utils/mockData';
+import { supabase } from '../../app/core/supabase.client';
 
 interface SettingsPanelProps {
   userId: string;
@@ -43,7 +44,15 @@ export function SettingsPanel({ userId, accessToken }: SettingsPanelProps) {
   async function fetchProfile() {
     try {
       // Utilisation des données mock
-      const data = await getMockUserProfile(userId);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name, email, phone')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        throw error;
+      }
       setProfile({
         name: data.name || '',
         email: data.email || '',
@@ -66,6 +75,19 @@ export function SettingsPanel({ userId, accessToken }: SettingsPanelProps) {
     try {
       // Simulation de mise à jour en mode mock
       await simulateNetworkDelay();
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: profile.name,
+          phone: profile.phone,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId);
+
+      if (error) {
+        throw error;
+      }
       setProfileSuccess(true);
       setTimeout(() => setProfileSuccess(false), 3000);
     } catch (error) {

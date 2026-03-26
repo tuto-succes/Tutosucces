@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Switch } from '../ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { AvailabilityManager } from './AvailabilityManager';
+import { TutorBankInfo } from './TutorBankInfo';
 import { getMockTutorProfile } from '../../utils/mockData';
 
 interface TutorProfileProps {
@@ -46,6 +47,7 @@ export function TutorProfile({ userId, accessToken, profile }: TutorProfileProps
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
   const [active, setActive] = useState(true);
+  const storageKey = `mockTutorProfile:${userId}`;
 
   useEffect(() => {
     fetchTutorProfile();
@@ -57,7 +59,7 @@ export function TutorProfile({ userId, accessToken, profile }: TutorProfileProps
       const data = await getMockTutorProfile(userId);
       
       // Vérifier si des données sont stockées dans localStorage
-      const storedProfile = localStorage.getItem('mockTutorProfile');
+      const storedProfile = localStorage.getItem(storageKey) || localStorage.getItem('mockTutorProfile');
       if (storedProfile) {
         try {
           const parsedProfile = JSON.parse(storedProfile);
@@ -105,7 +107,7 @@ export function TutorProfile({ userId, accessToken, profile }: TutorProfileProps
         active
       };
       
-      localStorage.setItem('mockTutorProfile', JSON.stringify(updatedProfile));
+      localStorage.setItem(storageKey, JSON.stringify(updatedProfile));
       setTutorProfile(updatedProfile);
       
       console.log('[TutorProfile] Sauvegarde réussie');
@@ -142,6 +144,7 @@ export function TutorProfile({ userId, accessToken, profile }: TutorProfileProps
     <Tabs defaultValue="info" className="space-y-6">
       <TabsList>
         <TabsTrigger value="info">Informations</TabsTrigger>
+        <TabsTrigger value="payment">Paiement</TabsTrigger>
         <TabsTrigger value="availability">Disponibilités</TabsTrigger>
         <TabsTrigger value="password">Mot de passe</TabsTrigger>
       </TabsList>
@@ -283,6 +286,20 @@ export function TutorProfile({ userId, accessToken, profile }: TutorProfileProps
 
       <TabsContent value="availability">
         <AvailabilityManager tutorId={userId} accessToken={accessToken} />
+      </TabsContent>
+
+      <TabsContent value="payment">
+        <Card>
+          <CardHeader>
+            <CardTitle>Informations de paiement</CardTitle>
+            <CardDescription>
+              Remplissez votre institution bancaire, votre numero d institution et votre numero de compte pour que l admin puisse preparer votre releve de paie.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TutorBankInfo tutorId={userId} />
+          </CardContent>
+        </Card>
       </TabsContent>
 
       <TabsContent value="password">

@@ -422,8 +422,28 @@ CREATE INDEX idx_contact_messages_created ON contact_messages(created_at DESC);
 -- RLS Policies
 ALTER TABLE contact_messages ENABLE ROW LEVEL SECURITY;
 
+-- Politique : N'importe qui peut insérer un message de contact
+DROP POLICY IF EXISTS "Contact messages insert anyone" ON contact_messages;
+CREATE POLICY "Contact messages insert anyone" 
+  ON contact_messages FOR INSERT 
+  WITH CHECK (true);
+
+-- Politique : Admins peuvent lire tous les messages
+DROP POLICY IF EXISTS "Contact messages viewable by admins" ON contact_messages;
 CREATE POLICY "Contact messages viewable by admins" 
   ON contact_messages FOR SELECT 
+  USING (auth.jwt() ->> 'role' = 'authenticated' AND (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+
+-- Politique : Admins peuvent mettre à jour (marquer comme lu/répondu)
+DROP POLICY IF EXISTS "Contact messages update by admins" ON contact_messages;
+CREATE POLICY "Contact messages update by admins" 
+  ON contact_messages FOR UPDATE 
+  USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+
+-- Politique : Admins peuvent supprimer
+DROP POLICY IF EXISTS "Contact messages delete by admins" ON contact_messages;
+CREATE POLICY "Contact messages delete by admins" 
+  ON contact_messages FOR DELETE 
   USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
 
 -- ============================================

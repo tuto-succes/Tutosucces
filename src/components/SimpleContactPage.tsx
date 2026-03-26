@@ -1,4 +1,15 @@
 import { useState } from 'react';
+
+const SUBJECTS_BY_LEVEL: Record<string, string[]> = {
+  Primaire: ['Mathématiques', 'Sciences', 'Français', 'Anglais'],
+  Secondaire: ['Mathématiques', 'Sciences', 'Physique', 'Chimie', 'Français', 'Anglais'],
+  CÉGEP: [
+    'Calcul I', 'Calcul II', 'Algèbre linéaire',
+    'Chimie générale', 'Chimie des solutions', 'Chimie organique',
+    'Physique mécanique', 'Électricité et magnétisme', 'Ondes et physique moderne',
+    'Français', 'Anglais',
+  ],
+};
 import { ArrowLeft, Send, Clock, Phone, Mail } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -232,34 +243,53 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                 {formData.requestType === 'student' && (
                   <>
                     <div>
-                      <Label htmlFor="schoolLevel">
-                        Niveau scolaire
-                      </Label>
-                      <select
-                        id="schoolLevel"
-                        value={formData.schoolLevel}
-                        onChange={(e) => setFormData({ ...formData, schoolLevel: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-md"
-                        style={{ borderColor: '#E0E0E0' }}
-                      >
-                        <option value="">Sélectionnez un niveau</option>
-                        <option value="Primaire">Primaire</option>
-                        <option value="Secondaire">Secondaire</option>
-                        <option value="CÉGEP">CÉGEP</option>
-                      </select>
+                      <Label>Niveau scolaire</Label>
+                      <div className="flex gap-3 mt-2 flex-wrap">
+                        {['Primaire', 'Secondaire', 'CÉGEP'].map(level => (
+                          <button
+                            key={level}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, schoolLevel: formData.schoolLevel === level ? '' : level, subjects: [] })}
+                            className="px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all"
+                            style={
+                              formData.schoolLevel === level
+                                ? { backgroundColor: '#2E5CA8', color: 'white', borderColor: '#2E5CA8' }
+                                : { backgroundColor: 'white', color: '#7F8C8D', borderColor: '#E0E0E0' }
+                            }
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
-                    <div>
-                      <Label htmlFor="subjects">
-                        Matières recherchées (optionnel)
-                      </Label>
-                      <Input
-                        id="subjects"
-                        value={formData.subjects.join(', ')}
-                        onChange={(e) => setFormData({ ...formData, subjects: e.target.value.split(',').map(s => s.trim()).filter(s => s) })}
-                        placeholder="Ex: Mathématiques, Français"
-                      />
-                    </div>
+                    {formData.schoolLevel && (
+                      <div>
+                        <Label>Matières recherchées <span className="font-normal text-gray-400">(optionnel)</span></Label>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {(SUBJECTS_BY_LEVEL[formData.schoolLevel] ?? []).map(subject => (
+                            <button
+                              key={subject}
+                              type="button"
+                              onClick={() => setFormData({
+                                ...formData,
+                                subjects: formData.subjects.includes(subject)
+                                  ? formData.subjects.filter(s => s !== subject)
+                                  : [...formData.subjects, subject],
+                              })}
+                              className="px-3 py-1 rounded-full text-sm border-2 transition-all"
+                              style={
+                                formData.subjects.includes(subject)
+                                  ? { backgroundColor: '#2E5CA8', color: 'white', borderColor: '#2E5CA8' }
+                                  : { backgroundColor: 'white', color: '#7F8C8D', borderColor: '#E0E0E0' }
+                              }
+                            >
+                              {subject}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div>
                       <Label htmlFor="hoursPerWeek">

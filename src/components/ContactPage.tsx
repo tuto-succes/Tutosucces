@@ -3,17 +3,30 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ArrowLeft, Send, CheckCircle, AlertCircle, Mail, Phone, Clock } from 'lucide-react';
 import contactImg from 'figma:asset/f6b2bca6a82ee2769f6e5b3505df8795d7984e63.png';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { supabase } from '../app/core/supabase.client';
 
 interface ContactPageProps {
   onBack: () => void;
 }
+
+const SUBJECTS_BY_LEVEL: Record<string, string[]> = {
+  Primaire: ['Mathématiques', 'Sciences', 'Français', 'Anglais'],
+  Secondaire: ['Mathématiques', 'Sciences', 'Physique', 'Chimie', 'Français', 'Anglais'],
+  CÉGEP: [
+    'Calcul I', 'Calcul II', 'Algèbre linéaire',
+    'Chimie générale', 'Chimie des solutions', 'Chimie organique',
+    'Physique mécanique', 'Électricité et magnétisme', 'Ondes et physique moderne',
+    'Français', 'Anglais',
+  ],
+};
 
 interface FormData {
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
+  schoolLevel: string;
+  subjects: string[];
   message: string;
 }
 
@@ -23,7 +36,9 @@ export function ContactPage({ onBack }: ContactPageProps) {
     lastName: '',
     email: '',
     phone: '',
-    message: ''
+    schoolLevel: '',
+    subjects: [],
+    message: '',
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,31 +60,21 @@ export function ContactPage({ onBack }: ContactPageProps) {
     setSubmitError(false);
 
     try {
-      console.log('Submitting contact form...', formData);
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-385c5805/contact`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            // Don't send Authorization header for public contact route
-          },
-          body: JSON.stringify(formData)
-        }
-      );
+      const { error } = await supabase
+        .from('contact_messages')
+        .insert({
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          email: formData.email,
+          phone: formData.phone || null,
+          school_level: formData.schoolLevel || null,
+          subjects: formData.subjects.length > 0 ? formData.subjects : null,
+          message: formData.message,
+          status: 'new',
+        });
 
-      console.log('Response status:', response.status);
-      
-      const data = await response.json();
-      console.log('Response data:', data);
+      if (error) throw error;
 
-      if (!response.ok) {
-        console.error('Server error:', data);
-        throw new Error(data.error || 'Erreur lors de l\'envoi du message');
-      }
-
-      console.log('Contact form submitted successfully');
       setSubmitSuccess(true);
       
       // Réinitialiser le formulaire
@@ -78,7 +83,9 @@ export function ContactPage({ onBack }: ContactPageProps) {
         lastName: '',
         email: '',
         phone: '',
-        message: ''
+        schoolLevel: '',
+        subjects: [],
+        message: '',
       });
     } catch (error) {
       console.error('Erreur lors de l\'envoi du formulaire de contact:', error);
@@ -337,10 +344,68 @@ export function ContactPage({ onBack }: ContactPageProps) {
                   </div>
                 </div>
 
+                {/* Niveau scolaire */}
+                <div>
+                  <label className="block text-sm font-semibold mb-2" style={{ color: '#2C3E50' }}>
+                    Niveau scolaire <span className="font-normal" style={{ color: '#7F8C8D' }}>(optionnel)</span>
+                  </label>
+                  <div className="flex gap-3 flex-wrap">
+                    {['Primaire', 'Secondaire', 'CÉGEP'].map(level => (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => setFormData(prev => ({
+                          ...prev,
+                          schoolLevel: prev.schoolLevel === level ? '' : level,
+                          subjects: [],
+                        }))}
+                        className="px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all"
+                        style={
+                          formData.schoolLevel === level
+                            ? { backgroundColor: '#E74C3C', color: 'white', borderColor: '#E74C3C' }
+                            : { backgroundColor: 'white', color: '#7F8C8D', borderColor: '#E0E0E0' }
+                        }
+                      >
+                        {level}
+                      </button>
+                    ))}
+                  </div>
+
+                  {formData.schoolLevel && (
+                    <div className="mt-3">
+                      <p className="text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
+                        Matières recherchées
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {(SUBJECTS_BY_LEVEL[formData.schoolLevel] ?? []).map(subject => (
+                          <button
+                            key={subject}
+                            type="button"
+                            onClick={() => setFormData(prev => ({
+                              ...prev,
+                              subjects: prev.subjects.includes(subject)
+                                ? prev.subjects.filter(s => s !== subject)
+                                : [...prev.subjects, subject],
+                            }))}
+                            className="px-3 py-1 rounded-full text-sm border-2 transition-all"
+                            style={
+                              formData.subjects.includes(subject)
+                                ? { backgroundColor: '#E74C3C', color: 'white', borderColor: '#E74C3C' }
+                                : { backgroundColor: 'white', color: '#7F8C8D', borderColor: '#E0E0E0' }
+                            }
+                          >
+                            {subject}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Message */}
                 <div>
-                  <label 
-                    htmlFor="message" 
+                  <label
+                    htmlFor="message"
                     className="block text-sm font-semibold mb-2"
                     style={{ color: '#2C3E50' }}
                   >

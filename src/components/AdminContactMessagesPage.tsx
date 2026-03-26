@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Mail, Phone, Clock, CheckCircle, Eye, Trash2, UserPlus, BookOpen, GraduationCap } from 'lucide-react';
+import { supabase } from '../app/core/supabase.client';
 import { CreateAccountFromContact } from './admin/CreateAccountFromContact';
 
 interface ContactMessage {
@@ -22,8 +23,14 @@ interface ContactMessage {
   status?: string;
 }
 
-export function AdminContactMessagesPage() {
+interface AdminContactMessagesPageProps {
+  onUserCreated?: () => void;
+}
+
+export function AdminContactMessagesPage({ onUserCreated }: AdminContactMessagesPageProps) {
   const [messages, setMessages] = useState<ContactMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<ContactMessage | null>(null);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
 
@@ -31,44 +38,87 @@ export function AdminContactMessagesPage() {
     loadMessages();
   }, []);
 
-  const loadMessages = () => {
-    const stored = localStorage.getItem('contactMessages');
-    if (stored) {
-      setMessages(JSON.parse(stored));
+  const loadMessages = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const { data, error } = await supabase
+        .from('contact_messages')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const splitLegacyName = (name?: string | null) => {
+        const fullName = String(name ?? '').trim();
+        if (!fullName) return { firstName: '', lastName: '' };
+        const parts = fullName.split(/\s+/);
+        return {
+          firstName: parts[0] ?? '',
+          lastName: parts.slice(1).join(' '),
+        };
+      };
+
+      const mapped: ContactMessage[] = (data ?? []).map((m: any) => ({
+        ...(splitLegacyName(m.name)),
+        id: m.id,
+        firstName: m.first_name ?? splitLegacyName(m.name).firstName,
+        lastName: m.last_name ?? splitLegacyName(m.name).lastName,
+        email: m.email,
+        phone: m.phone ?? '',
+        schoolLevel: m.school_level ?? '',
+        subjects: m.subjects ?? [],
+        message: m.message ?? m.subject ?? '',
+        submittedAt: m.created_at,
+        read: !['new', 'unread', null, undefined].includes(m.status),
+        status: m.status ?? 'new',
+      }));
+
+      setMessages(mapped);
+    } catch (err) {
+      console.error('Erreur chargement messages:', err);
+      const message = err instanceof Error ? err.message : 'Erreur inconnue';
+      setLoadError(message);
+      setMessages([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const markAsRead = (messageId: string) => {
-    const updatedMessages = messages.map(msg => 
-      msg.id === messageId ? { ...msg, read: true } : msg
+  const markAsRead = async (messageId: string) => {
+    await supabase
+      .from('contact_messages')
+      .update({ status: 'read' })
+      .eq('id', messageId);
+
+    setMessages(prev =>
+      prev.map(msg => msg.id === messageId ? { ...msg, read: true, status: 'read' } : msg)
     );
-    setMessages(updatedMessages);
-    localStorage.setItem('contactMessages', JSON.stringify(updatedMessages));
   };
 
-  const deleteMessage = (messageId: string) => {
-    if (confirm('Êtes-vous sûr de vouloir supprimer ce message ?')) {
-      const updatedMessages = messages.filter(msg => msg.id !== messageId);
-      setMessages(updatedMessages);
-      localStorage.setItem('contactMessages', JSON.stringify(updatedMessages));
-      if (selectedMessage?.id === messageId) {
-        setSelectedMessage(null);
-      }
-    }
+  const deleteMessage = async (messageId: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce message ?')) return;
+
+    await supabase.from('contact_messages').delete().eq('id', messageId);
+    setMessages(prev => prev.filter(msg => msg.id !== messageId));
+    if (selectedMessage?.id === messageId) setSelectedMessage(null);
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
     return new Intl.DateTimeFormat('fr-CA', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
+      minute: '2-digit',
+    }).format(new Date(dateString));
   };
 
   const unreadCount = messages.filter(msg => !msg.read).length;
+
+  if (loading) {
+    return <div className="p-6 text-center" style={{ color: '#7F8C8D' }}>Chargement des messages...</div>;
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -81,15 +131,33 @@ export function AdminContactMessagesPage() {
             Gérez les messages reçus via le formulaire de contact
           </p>
         </div>
-        {unreadCount > 0 && (
-          <Badge 
-            className="text-lg px-4 py-2" 
-            style={{ backgroundColor: '#E74C3C', color: 'white' }}
-          >
-            {unreadCount} non lu{unreadCount > 1 ? 's' : ''}
-          </Badge>
-        )}
+        <div className="flex items-center gap-3">
+          {unreadCount > 0 && (
+            <Badge
+              className="text-lg px-4 py-2"
+              style={{ backgroundColor: '#E74C3C', color: 'white' }}
+            >
+              {unreadCount} non lu{unreadCount > 1 ? 's' : ''}
+            </Badge>
+          )}
+          <Button variant="outline" size="sm" onClick={loadMessages}>
+            Actualiser
+          </Button>
+        </div>
       </div>
+
+      {loadError && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-4">
+            <p className="font-medium" style={{ color: '#C0392B' }}>
+              Impossible de charger les messages: {loadError}
+            </p>
+            <p className="mt-1 text-sm" style={{ color: '#7F8C8D' }}>
+              Vérifiez que votre compte connecté existe bien dans `profiles` avec le rôle `admin`, et que la table `contact_messages` utilise la même base Supabase que le formulaire public.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {messages.length === 0 ? (
         <Card>
@@ -108,15 +176,13 @@ export function AdminContactMessagesPage() {
               <Card
                 key={message.id}
                 className={`cursor-pointer transition-all ${
-                  selectedMessage?.id === message.id 
-                    ? 'ring-2 ring-blue-500' 
+                  selectedMessage?.id === message.id
+                    ? 'ring-2 ring-blue-500'
                     : 'hover:shadow-md'
                 } ${!message.read ? 'bg-blue-50' : ''}`}
                 onClick={() => {
                   setSelectedMessage(message);
-                  if (!message.read) {
-                    markAsRead(message.id);
-                  }
+                  if (!message.read) markAsRead(message.id);
                 }}
               >
                 <CardContent className="p-4">
@@ -160,10 +226,12 @@ export function AdminContactMessagesPage() {
                           <Mail className="h-4 w-4" />
                           {selectedMessage.email}
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Phone className="h-4 w-4" />
-                          {selectedMessage.phone}
-                        </div>
+                        {selectedMessage.phone && (
+                          <div className="flex items-center gap-1">
+                            <Phone className="h-4 w-4" />
+                            {selectedMessage.phone}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <Button
@@ -188,6 +256,36 @@ export function AdminContactMessagesPage() {
                     </div>
                   </div>
 
+                  {(selectedMessage.schoolLevel || (selectedMessage.subjects && selectedMessage.subjects.length > 0)) && (
+                    <div className="bg-blue-50 p-4 rounded-lg space-y-2">
+                      {selectedMessage.schoolLevel && (
+                        <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#2C3E50' }}>
+                          <GraduationCap className="h-4 w-4" style={{ color: '#2E5CA8' }} />
+                          Niveau : {selectedMessage.schoolLevel}
+                        </div>
+                      )}
+                      {selectedMessage.subjects && selectedMessage.subjects.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-2 text-sm font-medium mb-2" style={{ color: '#2C3E50' }}>
+                            <BookOpen className="h-4 w-4" style={{ color: '#2E5CA8' }} />
+                            Matières recherchées :
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedMessage.subjects.map(subject => (
+                              <span
+                                key={subject}
+                                className="px-2 py-1 rounded-full text-xs font-medium"
+                                style={{ backgroundColor: '#DBEAFE', color: '#2E5CA8' }}
+                              >
+                                {subject}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2 text-sm" style={{ color: '#7F8C8D' }}>
                     <Clock className="h-4 w-4" />
                     Reçu le {formatDate(selectedMessage.submittedAt)}
@@ -204,18 +302,20 @@ export function AdminContactMessagesPage() {
                       <Mail className="h-4 w-4 mr-2" />
                       Répondre par email
                     </Button>
-                    <Button
-                      className="flex-1"
-                      variant="outline"
-                      style={{ borderColor: '#2E5CA8', color: '#2E5CA8' }}
-                      onClick={() => {
-                        window.location.href = `tel:${selectedMessage.phone}`;
-                      }}
-                    >
-                      <Phone className="h-4 w-4 mr-2" />
-                      Appeler
-                    </Button>
-                    {(selectedMessage.requestType === 'student' || selectedMessage.requestType === 'tutor') && selectedMessage.status !== 'account_created' && (
+                    {selectedMessage.phone && (
+                      <Button
+                        className="flex-1"
+                        variant="outline"
+                        style={{ borderColor: '#2E5CA8', color: '#2E5CA8' }}
+                        onClick={() => {
+                          window.location.href = `tel:${selectedMessage.phone}`;
+                        }}
+                      >
+                        <Phone className="h-4 w-4 mr-2" />
+                        Appeler
+                      </Button>
+                    )}
+                    {selectedMessage.status !== 'account_created' ? (
                       <Button
                         className="flex-1"
                         variant="outline"
@@ -225,8 +325,7 @@ export function AdminContactMessagesPage() {
                         <UserPlus className="h-4 w-4 mr-2" />
                         Créer le compte
                       </Button>
-                    )}
-                    {selectedMessage.status === 'account_created' && (
+                    ) : (
                       <Badge
                         className="flex-1 flex items-center justify-center py-2"
                         style={{ backgroundColor: '#D1FAE5', color: '#10b981' }}
@@ -252,15 +351,16 @@ export function AdminContactMessagesPage() {
         </div>
       )}
 
-      {/* Dialogue de création de compte */}
       {selectedMessage && showCreateAccount && (
         <CreateAccountFromContact
           contactMessage={selectedMessage}
           isOpen={showCreateAccount}
           onClose={() => setShowCreateAccount(false)}
           onAccountCreated={() => {
+            setSelectedMessage(prev => prev ? { ...prev, status: 'account_created', read: true } : prev);
             loadMessages();
             setShowCreateAccount(false);
+            onUserCreated?.();
           }}
         />
       )}
