@@ -149,7 +149,7 @@ export default function App() {
   }
 
   if (currentPage === 'equipe') {
-    return <NotreEquipe onBack={() => setCurrentPage('home')} />;
+    return <NotreEquipe onBack={() => setCurrentPage('home')} onNavigateToRegistration={() => setCurrentPage('inscription')} />;
   }
 
   if (currentPage === 'termes') {

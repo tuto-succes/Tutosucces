@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from './ui/button';
 import { Footer } from './Footer';
@@ -61,6 +62,10 @@ const tutors = [
 ];
 
 export function NotreEquipe({ onBack, onNavigateToRegistration, onNavigateToServices, onNavigateToApproche, onNavigateToTermes, onNavigateToConfidentialite, onNavigateToAnnulation, onNavigateToContact }: NotreEquipeProps) {
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F8F9FA' }}>
       {/* Header */}
@@ -75,13 +80,16 @@ export function NotreEquipe({ onBack, onNavigateToRegistration, onNavigateToServ
             <ArrowLeft size={20} />
             Retour
           </Button>
-          <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
             <img src={logoImg} alt="Logo Tuto-Succès B&D" className="h-12" />
             <div className="flex flex-col">
               <h1 className="text-xl font-bold" style={{ color: '#2C3E50' }}>Tuto-Succès B&D</h1>
               <span className="text-xs tracking-wide" style={{ color: '#7F8C8D' }}>EN LIGNE</span>
             </div>
-          </div>
+          </button>
         </div>
       </header>
 
