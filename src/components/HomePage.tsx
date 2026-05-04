@@ -2,7 +2,7 @@ import summerCoursesNewImg from 'figma:asset/a87428688b3587c71f159e4536d833b469a
 import whoWeAreImg from 'figma:asset/8c0622eba8d9fa17cfad87e745fa56f64bcd079f.png';
 import divineNewImg from 'figma:asset/9881200ed39b9d422c75f87a05f40368a09f2ea3.png';
 import brahelNewImg from 'figma:asset/e6d7e243498f9fb6cc38493b3ed0b2f76e442856.png';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { supabase } from '../utils/supabase/client';
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { ChevronLeft, ChevronRight, Users, CheckCircle, Clock, MessageSquare, Star, ChevronDown, Menu, X } from 'lucide-react';
@@ -228,33 +228,31 @@ export function HomePage({ onLogin, onSignup, onNavigateToConfidentialite, onNav
 
   const handleNewsletterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newsletterEmail) return;
     setNewsletterStatus('loading');
     setNewsletterMessage('');
 
     try {
-      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-385c5805/newsletter/subscribe`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // Don't send Authorization header for public newsletter route
-        },
-        body: JSON.stringify({ email: newsletterEmail })
-      });
+      const { error } = await supabase
+        .from('newsletter_subscribers')
+        .insert({ email: newsletterEmail });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        setNewsletterStatus('success');
-        setNewsletterMessage(data.message || 'Merci de vous être inscrit à notre infolettre!');
-        setNewsletterEmail(''); // Clear the input
+      if (error) {
+        if (error.code === '23505') {
+          setNewsletterStatus('success');
+          setNewsletterMessage('Vous êtes déjà inscrit à notre infolettre !');
+        } else {
+          throw error;
+        }
       } else {
-        setNewsletterStatus('error');
-        setNewsletterMessage(data.error || 'Une erreur s\'est produite. Veuillez réessayer.');
+        setNewsletterStatus('success');
+        setNewsletterMessage('Merci ! Vous êtes maintenant inscrit à notre infolettre.');
+        setNewsletterEmail('');
       }
     } catch (error) {
       console.error('Newsletter subscription error:', error);
       setNewsletterStatus('error');
-      setNewsletterMessage('Une erreur s\'est produite. Veuillez réessayer.');
+      setNewsletterMessage('Une erreur est survenue. Veuillez réessayer.');
     }
   };
 

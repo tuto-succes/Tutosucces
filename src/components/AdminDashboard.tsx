@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, GraduationCap, DollarSign, TrendingUp, Settings, LogOut, User, FileText, UserPlus, AlertCircle, Calendar, Mail, Receipt } from 'lucide-react';
+import { Users, DollarSign, TrendingUp, LogOut, User, UserPlus, Calendar, Mail, Receipt, Newspaper } from 'lucide-react';
 import { Button } from './ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { AdminUsers } from './admin/AdminUsers';
@@ -9,7 +9,7 @@ import { AdminStats } from './admin/AdminStats';
 import { AdminContactMessagesPage } from './AdminContactMessagesPage';
 import { AdminSchedulePage } from './AdminSchedulePage';
 import { AdminInvoicesPage } from './AdminInvoicesPage';
-import { AdminTaxReceipts } from './admin/AdminTaxReceipts';
+import { AdminNewsletterPage } from './admin/AdminNewsletterPage';
 import { CreateTestAccounts } from './CreateTestAccounts';
 import logoImg from 'figma:asset/bf7daf7f4d90880ea5fa593b28754dac8a736020.png';
 
@@ -121,9 +121,9 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
               <DollarSign className="h-4 w-4 mr-2" />
               Finances
             </TabsTrigger>
-            <TabsTrigger value="tax-receipts">
-              <FileText className="h-4 w-4 mr-2" />
-              Relevés fiscaux
+            <TabsTrigger value="newsletter">
+              <Newspaper className="h-4 w-4 mr-2" />
+              Infolettre
             </TabsTrigger>
           </TabsList>
 
@@ -155,8 +155,8 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
             <AdminFinances />
           </TabsContent>
 
-          <TabsContent value="tax-receipts">
-            <AdminTaxReceipts />
+          <TabsContent value="newsletter">
+            <AdminNewsletterPage />
           </TabsContent>
         </Tabs>
       </div>
