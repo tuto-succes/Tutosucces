@@ -90,11 +90,11 @@ export function Footer({
               </li>
               <li>
                 <a
-                  href="tel:514-562-2584"
+                  href="tel:514-562-2884"
                   className="hover:text-white transition-colors flex items-center gap-2 text-base"
                 >
                   <Phone size={18} style={{ color: '#E74C3C' }} />
-                  514-562-2584
+                  514-562-2884
                 </a>
               </li>
             </ul>

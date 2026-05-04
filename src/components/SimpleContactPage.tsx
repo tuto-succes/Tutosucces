@@ -1,16 +1,5 @@
-import { useState } from 'react';
-
-const SUBJECTS_BY_LEVEL: Record<string, string[]> = {
-  Primaire: ['Mathématiques', 'Sciences', 'Français', 'Anglais'],
-  Secondaire: ['Mathématiques', 'Sciences', 'Physique', 'Chimie', 'Français', 'Anglais'],
-  CÉGEP: [
-    'Calcul I', 'Calcul II', 'Algèbre linéaire',
-    'Chimie générale', 'Chimie des solutions', 'Chimie organique',
-    'Physique mécanique', 'Électricité et magnétisme', 'Ondes et physique moderne',
-    'Français', 'Anglais',
-  ],
-};
-import { ArrowLeft, Send, Clock, Phone, Mail } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Send, Clock, Phone, Mail, Calendar } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -23,34 +12,64 @@ interface SimpleContactPageProps {
 }
 
 export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     email: '',
     phone: '',
-    requestType: 'student', // 'student' ou 'tutor'
+    requestType: 'student',
     schoolLevel: '',
-    subjects: [] as string[],
-    preferredSchedule: '',
-    hoursPerWeek: '',
+    matiere: '',
+    heuresParSemaine: '',
+    disponibilites: [] as string[],
     message: '',
   });
+
+  const joursOptions = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+
+  const matieresParNiveau: Record<string, string[]> = {
+    'Primaire': ['Mathématiques', 'Sciences', 'Français', 'Anglais', 'Mentorat'],
+    'Secondaire': ['Mathématiques', 'Sciences', 'Physique', 'Chimie', 'Français', 'Anglais', 'Mentorat'],
+    'CÉGEP': [
+      'Calcul I et Calcul II',
+      'Algèbre linéaire',
+      'Chimie générale',
+      'Chimie des solutions',
+      'Chimie organique',
+      'Physique mécanique',
+      'Électricité et magnétisme',
+      'Ondes et physique moderne',
+      'Français',
+      'Anglais',
+      'Mentorat',
+    ],
+  };
+
+  const toggleDisponibilite = (jour: string) => {
+    setFormData(prev => ({
+      ...prev,
+      disponibilites: prev.disponibilites.includes(jour)
+        ? prev.disponibilites.filter(d => d !== jour)
+        : [...prev.disponibilites, jour]
+    }));
+  };
 
   const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
     if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone || !formData.message) {
       alert('Veuillez remplir tous les champs.');
       return;
     }
 
-    // Simuler l'envoi
     console.log('Message de contact:', formData);
-    
-    // En mode mock, on stocke dans localStorage
+
     const contacts = JSON.parse(localStorage.getItem('contactMessages') || '[]');
     contacts.push({
       ...formData,
@@ -95,11 +114,15 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                   Prochaines étapes :
                 </h3>
                 <p className="text-sm mb-3" style={{ color: '#7F8C8D' }}>
-                  Notre équipe vous répondra dans les plus brefs délais pendant nos heures d'ouverture.
+                  Notre équipe vous contactera dans les 24-48 heures pour discuter de vos besoins.
                 </p>
-                <div className="flex items-center gap-2 text-sm" style={{ color: '#2E5CA8' }}>
-                  <Clock className="h-4 w-4" />
-                  <span className="font-semibold">Lundi au Samedi : 8h - 21h</span>
+                <div className="space-y-1 text-sm" style={{ color: '#2E5CA8' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    <span className="font-semibold">Horaires :</span>
+                  </div>
+                  <p className="ml-6">Lundi au vendredi: 9h-18h</p>
+                  <p className="ml-6">Samedi-Dimanche: 10h-17h</p>
                 </div>
               </div>
 
@@ -125,13 +148,16 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <button
+              onClick={onBack}
+              className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            >
               <img src={logoImg} alt="Logo Tuto-Succès B&D" className="h-12" />
               <div className="flex flex-col">
                 <h1 className="text-xl font-bold" style={{ color: '#2C3E50' }}>Tuto-Succès B&D</h1>
                 <span className="text-xs tracking-wide" style={{ color: '#7F8C8D' }}>EN LIGNE</span>
               </div>
-            </div>
+            </button>
             <Button variant="ghost" onClick={onBack}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Retour
@@ -169,9 +195,7 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="firstName">
-                      Prénom
-                    </Label>
+                    <Label htmlFor="firstName">Prénom</Label>
                     <Input
                       id="firstName"
                       value={formData.firstName}
@@ -182,9 +206,7 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                   </div>
 
                   <div>
-                    <Label htmlFor="lastName">
-                      Nom
-                    </Label>
+                    <Label htmlFor="lastName">Nom</Label>
                     <Input
                       id="lastName"
                       value={formData.lastName}
@@ -196,9 +218,7 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                 </div>
 
                 <div>
-                  <Label htmlFor="email">
-                    E-mail
-                  </Label>
+                  <Label htmlFor="email">E-mail</Label>
                   <Input
                     id="email"
                     type="email"
@@ -210,9 +230,7 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                 </div>
 
                 <div>
-                  <Label htmlFor="phone">
-                    Téléphone
-                  </Label>
+                  <Label htmlFor="phone">Téléphone</Label>
                   <Input
                     id="phone"
                     type="tel"
@@ -224,9 +242,7 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                 </div>
 
                 <div>
-                  <Label htmlFor="requestType">
-                    Type de demande
-                  </Label>
+                  <Label htmlFor="requestType">Type de demande</Label>
                   <select
                     id="requestType"
                     value={formData.requestType}
@@ -235,7 +251,6 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                     style={{ borderColor: '#E0E0E0' }}
                   >
                     <option value="student">Trouver un tuteur pour mon enfant/moi-même</option>
-                    <option value="tutor">Devenir tuteur</option>
                     <option value="info">Demande d'information générale</option>
                   </select>
                 </div>
@@ -243,84 +258,88 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                 {formData.requestType === 'student' && (
                   <>
                     <div>
-                      <Label>Niveau scolaire</Label>
-                      <div className="flex gap-3 mt-2 flex-wrap">
-                        {['Primaire', 'Secondaire', 'CÉGEP'].map(level => (
-                          <button
-                            key={level}
-                            type="button"
-                            onClick={() => setFormData({ ...formData, schoolLevel: formData.schoolLevel === level ? '' : level, subjects: [] })}
-                            className="px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all"
-                            style={
-                              formData.schoolLevel === level
-                                ? { backgroundColor: '#2E5CA8', color: 'white', borderColor: '#2E5CA8' }
-                                : { backgroundColor: 'white', color: '#7F8C8D', borderColor: '#E0E0E0' }
-                            }
-                          >
-                            {level}
-                          </button>
-                        ))}
-                      </div>
+                      <Label htmlFor="schoolLevel">Niveau scolaire</Label>
+                      <select
+                        id="schoolLevel"
+                        value={formData.schoolLevel}
+                        onChange={(e) => setFormData({ ...formData, schoolLevel: e.target.value, matiere: '' })}
+                        className="w-full px-3 py-2 border rounded-md"
+                        style={{ borderColor: '#E0E0E0' }}
+                      >
+                        <option value="">Sélectionnez un niveau</option>
+                        <option value="Primaire">Primaire</option>
+                        <option value="Secondaire">Secondaire</option>
+                        <option value="CÉGEP">CÉGEP</option>
+                      </select>
                     </div>
 
                     {formData.schoolLevel && (
                       <div>
-                        <Label>Matières recherchées <span className="font-normal text-gray-400">(optionnel)</span></Label>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {(SUBJECTS_BY_LEVEL[formData.schoolLevel] ?? []).map(subject => (
-                            <button
-                              key={subject}
-                              type="button"
-                              onClick={() => setFormData({
-                                ...formData,
-                                subjects: formData.subjects.includes(subject)
-                                  ? formData.subjects.filter(s => s !== subject)
-                                  : [...formData.subjects, subject],
-                              })}
-                              className="px-3 py-1 rounded-full text-sm border-2 transition-all"
-                              style={
-                                formData.subjects.includes(subject)
-                                  ? { backgroundColor: '#2E5CA8', color: 'white', borderColor: '#2E5CA8' }
-                                  : { backgroundColor: 'white', color: '#7F8C8D', borderColor: '#E0E0E0' }
-                              }
-                            >
-                              {subject}
-                            </button>
+                        <Label htmlFor="matiere">Matière recherchée *</Label>
+                        <select
+                          id="matiere"
+                          value={formData.matiere}
+                          onChange={(e) => setFormData({ ...formData, matiere: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-md"
+                          style={{ borderColor: '#E0E0E0' }}
+                          required
+                        >
+                          <option value="">Sélectionnez une matière</option>
+                          {matieresParNiveau[formData.schoolLevel].map((mat) => (
+                            <option key={mat} value={mat}>{mat}</option>
                           ))}
-                        </div>
+                        </select>
                       </div>
                     )}
 
                     <div>
-                      <Label htmlFor="hoursPerWeek">
-                        Heures par semaine souhaitées (optionnel)
+                      <Label htmlFor="heuresParSemaine">
+                        Nombre d'heures de séances souhaitées par semaine
                       </Label>
-                      <Input
-                        id="hoursPerWeek"
-                        value={formData.hoursPerWeek}
-                        onChange={(e) => setFormData({ ...formData, hoursPerWeek: e.target.value })}
-                        placeholder="Ex: 2-3 heures"
-                      />
+                      <select
+                        id="heuresParSemaine"
+                        value={formData.heuresParSemaine}
+                        onChange={(e) => setFormData({ ...formData, heuresParSemaine: e.target.value })}
+                        className="w-full px-3 py-2 border rounded-md"
+                        style={{ borderColor: '#E0E0E0' }}
+                      >
+                        <option value="">Sélectionnez le nombre d'heures</option>
+                        <option value="1-2">1-2 heures/semaine</option>
+                        <option value="3-5">3-5 heures/semaine</option>
+                        <option value="6-10">6-10 heures/semaine</option>
+                        <option value="10+">10+ heures/semaine</option>
+                      </select>
                     </div>
 
                     <div>
-                      <Label htmlFor="preferredSchedule">
-                        Horaires préférés (optionnel)
+                      <Label className="mb-2 block">
+                        <Calendar className="inline h-4 w-4 mr-2" style={{ color: '#2E5CA8' }} />
+                        Vos disponibilités dans la semaine
                       </Label>
-                      <Input
-                        id="preferredSchedule"
-                        value={formData.preferredSchedule}
-                        onChange={(e) => setFormData({ ...formData, preferredSchedule: e.target.value })}
-                        placeholder="Ex: Soirs de semaine, weekend"
-                      />
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {joursOptions.map((jour) => (
+                          <button
+                            key={jour}
+                            type="button"
+                            onClick={() => toggleDisponibilite(jour)}
+                            className="px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                            style={{
+                              backgroundColor: formData.disponibilites.includes(jour) ? '#2E5CA8' : 'white',
+                              borderColor: formData.disponibilites.includes(jour) ? '#2E5CA8' : '#E0E0E0',
+                              color: formData.disponibilites.includes(jour) ? 'white' : '#2C3E50',
+                              border: '2px solid',
+                            }}
+                          >
+                            {jour}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </>
                 )}
 
                 <div>
-                  <Label htmlFor="message">
-                    Message
-                  </Label>
+                  <Label htmlFor="message">Message</Label>
                   <Textarea
                     id="message"
                     value={formData.message}
@@ -353,54 +372,35 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex justify-between items-center py-2 border-b">
-                  <span className="font-medium" style={{ color: '#2C3E50' }}>Lundi</span>
-                  <span style={{ color: '#7F8C8D' }}>8h00 - 21h00</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b">
-                  <span className="font-medium" style={{ color: '#2C3E50' }}>Mardi</span>
-                  <span style={{ color: '#7F8C8D' }}>8h00 - 21h00</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b">
-                  <span className="font-medium" style={{ color: '#2C3E50' }}>Mercredi</span>
-                  <span style={{ color: '#7F8C8D' }}>8h00 - 21h00</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b">
-                  <span className="font-medium" style={{ color: '#2C3E50' }}>Jeudi</span>
-                  <span style={{ color: '#7F8C8D' }}>8h00 - 21h00</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b">
-                  <span className="font-medium" style={{ color: '#2C3E50' }}>Vendredi</span>
-                  <span style={{ color: '#7F8C8D' }}>8h00 - 21h00</span>
-                </div>
+                {['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'].map((jour) => (
+                  <div key={jour} className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium" style={{ color: '#2C3E50' }}>{jour}</span>
+                    <span style={{ color: '#7F8C8D' }}>9h00 - 18h00</span>
+                  </div>
+                ))}
                 <div className="flex justify-between items-center py-2 border-b">
                   <span className="font-medium" style={{ color: '#2C3E50' }}>Samedi</span>
-                  <span style={{ color: '#7F8C8D' }}>8h00 - 21h00</span>
+                  <span style={{ color: '#7F8C8D' }}>10h00 - 17h00</span>
                 </div>
                 <div className="flex justify-between items-center py-2">
                   <span className="font-medium" style={{ color: '#2C3E50' }}>Dimanche</span>
-                  <span className="font-semibold" style={{ color: '#E74C3C' }}>Fermé</span>
+                  <span style={{ color: '#7F8C8D' }}>10h00 - 17h00</span>
                 </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle style={{ color: '#2C3E50' }}>
-                  Coordonnées
-                </CardTitle>
+                <CardTitle style={{ color: '#2C3E50' }}>Coordonnées</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-start gap-3">
                   <Phone className="h-5 w-5 mt-1" style={{ color: '#2E5CA8' }} />
                   <div>
                     <p className="font-medium" style={{ color: '#2C3E50' }}>Téléphone</p>
-                    <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                      514-651-2401
-                    </p>
-                    <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                      514-562-2884
-                    </p>
+                    <p className="text-sm" style={{ color: '#7F8C8D' }}>514-651-2401</p>
+                    <p className="text-xs" style={{ color: '#7F8C8D' }}>ou</p>
+                    <p className="text-sm" style={{ color: '#7F8C8D' }}>514-562-2884</p>
                   </div>
                 </div>
 
@@ -408,9 +408,7 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                   <Mail className="h-5 w-5 mt-1" style={{ color: '#2E5CA8' }} />
                   <div>
                     <p className="font-medium" style={{ color: '#2C3E50' }}>Email</p>
-                    <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                      tutosuccesbd@gmail.com
-                    </p>
+                    <p className="text-sm" style={{ color: '#7F8C8D' }}>tutosuccessbd@gmail.com</p>
                   </div>
                 </div>
               </CardContent>
@@ -422,10 +420,11 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                   Réponse rapide garantie
                 </p>
                 <p className="text-sm" style={{ color: '#7F8C8D' }}>
-                  Nous nous engageons à répondre à tous les messages dans un délai de 24 heures pendant nos heures d'ouverture.
+                  Nous nous engageons à répondre à tous les messages dans un délai de 24-48 heures pendant nos heures d'ouverture.
                 </p>
               </CardContent>
             </Card>
+
           </div>
         </div>
       </div>

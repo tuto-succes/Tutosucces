@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowLeft, User, Mail, Phone, BookOpen, Calendar, Send } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, BookOpen, Calendar, Send } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -13,6 +13,10 @@ interface StudentRegistrationPageProps {
 }
 
 export function StudentRegistrationPage({ onBack, onNavigateToContact }: StudentRegistrationPageProps) {
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   const [formData, setFormData] = useState({
     parentName: '',
     studentName: '',
@@ -20,21 +24,24 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
     phone: '',
     schoolLevel: '',
     subjects: [] as string[],
-    availabilityPreference: '',
+    disponibilites: [] as string[],
     goals: '',
     additionalInfo: '',
   });
 
+  const joursOptions = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+
   const [submitted, setSubmitted] = useState(false);
 
   const schoolLevels = ['Primaire', 'Secondaire', 'CÉGEP'];
-  
+
   const subjectsByLevel: { [key: string]: string[] } = {
     'Primaire': [
       'Mathématiques',
       'Sciences',
       'Français',
       'Anglais',
+      'Mentorat',
     ],
     'Secondaire': [
       'Mathématiques',
@@ -43,6 +50,7 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
       'Chimie',
       'Français',
       'Anglais',
+      'Mentorat',
     ],
     'CÉGEP': [
       'Calcul I',
@@ -56,11 +64,11 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
       'Ondes et physique moderne',
       'Français',
       'Anglais',
+      'Mentorat',
     ],
   };
 
-  // Obtenir les matières disponibles pour le niveau sélectionné
-  const availableSubjects = formData.schoolLevel 
+  const availableSubjects = formData.schoolLevel
     ? subjectsByLevel[formData.schoolLevel] || []
     : [];
 
@@ -73,10 +81,18 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
     }));
   };
 
+  const toggleDisponibilite = (jour: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      disponibilites: prev.disponibilites.includes(jour)
+        ? prev.disponibilites.filter((d) => d !== jour)
+        : [...prev.disponibilites, jour],
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
     if (!formData.parentName || !formData.studentName || !formData.email || !formData.phone) {
       alert('Veuillez remplir tous les champs obligatoires.');
       return;
@@ -92,10 +108,8 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
       return;
     }
 
-    // Simuler l'envoi
     console.log('Demande d\'inscription:', formData);
-    
-    // En mode mock, on stocke juste dans localStorage pour simulation
+
     const registrations = JSON.parse(localStorage.getItem('studentRegistrations') || '[]');
     registrations.push({
       ...formData,
@@ -112,11 +126,7 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
     return (
       <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(135deg, #2E5CA8 0%, #E74C3C 100%)' }}>
         <div className="p-6">
-          <Button
-            variant="ghost"
-            onClick={onBack}
-            className="text-white hover:bg-white/10"
-          >
+          <Button variant="ghost" onClick={onBack} className="text-white hover:bg-white/10">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Retour à l'accueil
           </Button>
@@ -174,11 +184,7 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
               </div>
 
               <div className="text-center">
-                <Button
-                  onClick={onBack}
-                  className="w-full"
-                  style={{ backgroundColor: '#2E5CA8', color: 'white' }}
-                >
+                <Button onClick={onBack} className="w-full" style={{ backgroundColor: '#2E5CA8', color: 'white' }}>
                   Retour à l'accueil
                 </Button>
               </div>
@@ -195,13 +201,13 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <button onClick={onBack} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <img src={logoImg} alt="Logo Tuto-Succès B&D" className="h-12" />
               <div className="flex flex-col">
                 <h1 className="text-xl font-bold" style={{ color: '#2C3E50' }}>Tuto-Succès B&D</h1>
                 <span className="text-xs tracking-wide" style={{ color: '#7F8C8D' }}>EN LIGNE</span>
               </div>
-            </div>
+            </button>
             <Button variant="ghost" onClick={onBack}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Retour
@@ -214,10 +220,10 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
       <div className="py-12" style={{ background: 'linear-gradient(135deg, #2E5CA8 0%, #E74C3C 100%)' }}>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-4xl font-bold text-white mb-4">
-            Trouver un tuteur adapté à vos besoins
+            Trouver un tuteur ou mentor adapté à vos besoins
           </h2>
           <p className="text-xl text-white opacity-90">
-            Remplissez le formulaire ci-dessous et nous vous proposerons les meilleurs tuteurs pour vous
+            Remplissez le formulaire ci-dessous et nous vous proposerons les meilleurs tuteurs ou mentors pour vous
           </p>
         </div>
       </div>
@@ -237,15 +243,11 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Coordonnées */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold" style={{ color: '#2C3E50' }}>
-                  Coordonnées
-                </h3>
+                <h3 className="text-lg font-semibold" style={{ color: '#2C3E50' }}>Coordonnées</h3>
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="parentName">
-                      Nom du parent *
-                    </Label>
+                    <Label htmlFor="parentName">Nom du parent *</Label>
                     <Input
                       id="parentName"
                       value={formData.parentName}
@@ -256,9 +258,7 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
                   </div>
 
                   <div>
-                    <Label htmlFor="studentName">
-                      Nom de l'élève *
-                    </Label>
+                    <Label htmlFor="studentName">Nom de l'élève *</Label>
                     <Input
                       id="studentName"
                       value={formData.studentName}
@@ -271,9 +271,7 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="email">
-                      Email *
-                    </Label>
+                    <Label htmlFor="email">Email *</Label>
                     <Input
                       id="email"
                       type="email"
@@ -285,9 +283,7 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
                   </div>
 
                   <div>
-                    <Label htmlFor="phone">
-                      Téléphone *
-                    </Label>
+                    <Label htmlFor="phone">Téléphone *</Label>
                     <Input
                       id="phone"
                       type="tel"
@@ -308,7 +304,7 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
                     <button
                       key={level}
                       type="button"
-                      onClick={() => setFormData({ ...formData, schoolLevel: level })}
+                      onClick={() => setFormData({ ...formData, schoolLevel: level, subjects: [] })}
                       className={`p-4 rounded-lg border-2 transition-all ${
                         formData.schoolLevel === level
                           ? 'border-blue-500 bg-blue-50'
@@ -347,9 +343,7 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
                             ? 'border-red-500 bg-red-50'
                             : 'border-gray-200 hover:border-gray-300'
                         }`}
-                        style={{
-                          color: formData.subjects.includes(subject) ? '#E74C3C' : '#2C3E50',
-                        }}
+                        style={{ color: formData.subjects.includes(subject) ? '#E74C3C' : '#2C3E50' }}
                       >
                         {subject}
                       </button>
@@ -360,22 +354,36 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
 
               {/* Disponibilités */}
               <div>
-                <Label htmlFor="availabilityPreference">
-                  Préférence de disponibilité
+                <Label className="mb-3 block">
+                  <Calendar className="inline h-4 w-4 mr-2" style={{ color: '#2E5CA8' }} />
+                  Vos disponibilités dans la semaine
                 </Label>
-                <Input
-                  id="availabilityPreference"
-                  value={formData.availabilityPreference}
-                  onChange={(e) => setFormData({ ...formData, availabilityPreference: e.target.value })}
-                  placeholder="Ex: Lundi et mercredi soir, samedi après-midi"
-                />
+                <p className="text-xs mb-3" style={{ color: '#7F8C8D' }}>
+                  Sélectionnez les jours où vous êtes disponible pour les séances de tutorat
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {joursOptions.map((jour) => (
+                    <button
+                      key={jour}
+                      type="button"
+                      onClick={() => toggleDisponibilite(jour)}
+                      className="px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                      style={{
+                        backgroundColor: formData.disponibilites.includes(jour) ? '#2E5CA8' : 'white',
+                        border: '2px solid',
+                        borderColor: formData.disponibilites.includes(jour) ? '#2E5CA8' : '#E0E0E0',
+                        color: formData.disponibilites.includes(jour) ? 'white' : '#2C3E50',
+                      }}
+                    >
+                      {jour}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Objectifs */}
               <div>
-                <Label htmlFor="goals">
-                  Objectifs et besoins
-                </Label>
+                <Label htmlFor="goals">Objectifs et besoins</Label>
                 <Textarea
                   id="goals"
                   value={formData.goals}
@@ -387,9 +395,7 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
 
               {/* Informations additionnelles */}
               <div>
-                <Label htmlFor="additionalInfo">
-                  Informations additionnelles
-                </Label>
+                <Label htmlFor="additionalInfo">Informations additionnelles</Label>
                 <Textarea
                   id="additionalInfo"
                   value={formData.additionalInfo}
@@ -399,21 +405,11 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
                 />
               </div>
 
-              {/* Submit Button */}
               <div className="flex gap-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onBack}
-                  className="flex-1"
-                >
+                <Button type="button" variant="outline" onClick={onBack} className="flex-1">
                   Annuler
                 </Button>
-                <Button
-                  type="submit"
-                  className="flex-1"
-                  style={{ backgroundColor: '#E74C3C', color: 'white' }}
-                >
+                <Button type="submit" className="flex-1" style={{ backgroundColor: '#E74C3C', color: 'white' }}>
                   <Send className="h-4 w-4 mr-2" />
                   Envoyer la demande
                 </Button>
