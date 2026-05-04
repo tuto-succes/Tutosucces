@@ -27,8 +27,18 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
     matiere: '',
     heuresParSemaine: '',
     disponibilites: [] as string[],
+    tutorLevels: [] as string[],
     message: '',
   });
+
+  const toggleTutorLevel = (level: string) => {
+    setFormData(prev => ({
+      ...prev,
+      tutorLevels: prev.tutorLevels.includes(level)
+        ? prev.tutorLevels.filter(l => l !== level)
+        : [...prev.tutorLevels, level]
+    }));
+  };
 
   const joursOptions = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
@@ -69,28 +79,42 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
       return;
     }
 
-    const typeLabel =
-      formData.requestType === 'student' ? '[DEMANDE DE TUTORAT]' :
-      formData.requestType === 'tutor'   ? '[CANDIDATURE TUTEUR]' :
-                                           '[DEMANDE D\'INFORMATION]';
+    let error: any = null;
 
-    const fullMessage = [
-      typeLabel,
-      formData.heuresParSemaine ? `Heures/semaine souhaitées : ${formData.heuresParSemaine}` : '',
-      formData.disponibilites.length > 0 ? `Disponibilités : ${formData.disponibilites.join(', ')}` : '',
-      formData.message,
-    ].filter(Boolean).join('\n\n');
+    if (formData.requestType === 'tutor') {
+      const result = await supabase.from('tutor_applications').insert({
+        name: `${formData.firstName} ${formData.lastName}`,
+        email: formData.email,
+        phone: formData.phone,
+        subjects: formData.matiere ? [formData.matiere] : [],
+        levels: formData.tutorLevels,
+        experience: [
+          formData.disponibilites.length > 0 ? `Disponibilités : ${formData.disponibilites.join(', ')}` : '',
+          formData.message,
+        ].filter(Boolean).join('\n\n'),
+        status: 'pending',
+      });
+      error = result.error;
+    } else {
+      const fullMessage = [
+        formData.requestType === 'student' ? '[DEMANDE DE TUTORAT]' : '[DEMANDE D\'INFORMATION]',
+        formData.heuresParSemaine ? `Heures/semaine souhaitées : ${formData.heuresParSemaine}` : '',
+        formData.disponibilites.length > 0 ? `Disponibilités : ${formData.disponibilites.join(', ')}` : '',
+        formData.message,
+      ].filter(Boolean).join('\n\n');
 
-    const { error } = await supabase.from('contact_messages').insert({
-      first_name: formData.firstName,
-      last_name: formData.lastName,
-      email: formData.email,
-      phone: formData.phone,
-      school_level: formData.requestType === 'student' ? formData.schoolLevel : null,
-      subjects: formData.matiere ? [formData.matiere] : [],
-      message: fullMessage,
-      status: 'new',
-    });
+      const result = await supabase.from('contact_messages').insert({
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        school_level: formData.schoolLevel || null,
+        subjects: formData.matiere ? [formData.matiere] : [],
+        message: fullMessage,
+        status: 'new',
+      });
+      error = result.error;
+    }
 
     if (error) {
       console.error('Erreur envoi:', error);
@@ -279,7 +303,7 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                 {formData.requestType === 'tutor' && (
                   <>
                     <div>
-                      <Label htmlFor="matiere">Matière(s) que vous pouvez enseigner</Label>
+                      <Label htmlFor="matiere">Matière principale que vous enseignez</Label>
                       <select
                         id="matiere"
                         value={formData.matiere}
@@ -287,12 +311,34 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                         className="w-full px-3 py-2 border rounded-md"
                         style={{ borderColor: '#E0E0E0' }}
                       >
-                        <option value="">Sélectionnez une matière principale</option>
+                        <option value="">Sélectionnez une matière</option>
                         {['Mathématiques', 'Physique', 'Chimie', 'Français', 'Anglais', 'Biologie',
                           'Histoire', 'Géographie', 'Informatique', 'Mentorat', 'Autre'].map((mat) => (
                           <option key={mat} value={mat}>{mat}</option>
                         ))}
                       </select>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2 block">Niveaux que vous pouvez enseigner</Label>
+                      <div className="flex gap-2 flex-wrap">
+                        {['Primaire', 'Secondaire', 'CÉGEP'].map((level) => (
+                          <button
+                            key={level}
+                            type="button"
+                            onClick={() => toggleTutorLevel(level)}
+                            className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                            style={{
+                              backgroundColor: formData.tutorLevels.includes(level) ? '#E74C3C' : 'white',
+                              borderColor: formData.tutorLevels.includes(level) ? '#E74C3C' : '#E0E0E0',
+                              color: formData.tutorLevels.includes(level) ? 'white' : '#2C3E50',
+                              border: '2px solid',
+                            }}
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div>
