@@ -5,6 +5,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Textarea } from './ui/textarea';
+import { supabase } from '../utils/supabase/client';
 import logoImg from 'figma:asset/bf7daf7f4d90880ea5fa593b28754dac8a736020.png';
 
 interface StudentRegistrationPageProps {
@@ -108,16 +109,30 @@ export function StudentRegistrationPage({ onBack, onNavigateToContact }: Student
       return;
     }
 
-    console.log('Demande d\'inscription:', formData);
+    const fullMessage = [
+      '[DEMANDE DE TUTORAT]',
+      `Élève : ${formData.studentName}`,
+      formData.disponibilites.length > 0 ? `Disponibilités : ${formData.disponibilites.join(', ')}` : '',
+      formData.goals ? `Objectifs : ${formData.goals}` : '',
+      formData.additionalInfo ? `Informations supplémentaires : ${formData.additionalInfo}` : '',
+    ].filter(Boolean).join('\n\n');
 
-    const registrations = JSON.parse(localStorage.getItem('studentRegistrations') || '[]');
-    registrations.push({
-      ...formData,
-      id: `reg-${Date.now()}`,
-      submittedAt: new Date().toISOString(),
-      status: 'pending',
+    const { error } = await supabase.from('contact_messages').insert({
+      first_name: formData.parentName.split(' ')[0] || formData.parentName,
+      last_name: formData.parentName.split(' ').slice(1).join(' ') || '',
+      email: formData.email,
+      phone: formData.phone,
+      school_level: formData.schoolLevel,
+      subjects: formData.subjects,
+      message: fullMessage,
+      status: 'new',
     });
-    localStorage.setItem('studentRegistrations', JSON.stringify(registrations));
+
+    if (error) {
+      console.error('Erreur envoi:', error);
+      alert('Une erreur est survenue. Veuillez réessayer.');
+      return;
+    }
 
     setSubmitted(true);
   };

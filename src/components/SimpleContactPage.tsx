@@ -5,6 +5,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Textarea } from './ui/textarea';
+import { supabase } from '../utils/supabase/client';
 import logoImg from 'figma:asset/bf7daf7f4d90880ea5fa593b28754dac8a736020.png';
 
 interface SimpleContactPageProps {
@@ -26,8 +27,18 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
     matiere: '',
     heuresParSemaine: '',
     disponibilites: [] as string[],
+    tutorLevels: [] as string[],
     message: '',
   });
+
+  const toggleTutorLevel = (level: string) => {
+    setFormData(prev => ({
+      ...prev,
+      tutorLevels: prev.tutorLevels.includes(level)
+        ? prev.tutorLevels.filter(l => l !== level)
+        : [...prev.tutorLevels, level]
+    }));
+  };
 
   const joursOptions = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
@@ -68,15 +79,48 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
       return;
     }
 
-    console.log('Message de contact:', formData);
+    let error: any = null;
 
-    const contacts = JSON.parse(localStorage.getItem('contactMessages') || '[]');
-    contacts.push({
-      ...formData,
-      id: `contact-${Date.now()}`,
-      submittedAt: new Date().toISOString(),
-    });
-    localStorage.setItem('contactMessages', JSON.stringify(contacts));
+    if (formData.requestType === 'tutor') {
+      const result = await supabase.from('tutor_applications').insert({
+        name: `${formData.firstName} ${formData.lastName}`,
+        email: formData.email,
+        phone: formData.phone,
+        subjects: formData.matiere ? [formData.matiere] : [],
+        levels: formData.tutorLevels,
+        experience: [
+          formData.disponibilites.length > 0 ? `Disponibilités : ${formData.disponibilites.join(', ')}` : '',
+          formData.message,
+        ].filter(Boolean).join('\n\n'),
+        status: 'pending',
+      });
+      error = result.error;
+    } else {
+      const fullMessage = [
+        formData.requestType === 'student' ? '[DEMANDE DE TUTORAT]' : '[DEMANDE D\'INFORMATION]',
+        formData.heuresParSemaine ? `Heures/semaine souhaitées : ${formData.heuresParSemaine}` : '',
+        formData.disponibilites.length > 0 ? `Disponibilités : ${formData.disponibilites.join(', ')}` : '',
+        formData.message,
+      ].filter(Boolean).join('\n\n');
+
+      const result = await supabase.from('contact_messages').insert({
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        school_level: formData.schoolLevel || null,
+        subjects: formData.matiere ? [formData.matiere] : [],
+        message: fullMessage,
+        status: 'new',
+      });
+      error = result.error;
+    }
+
+    if (error) {
+      console.error('Erreur envoi:', error);
+      alert('Une erreur est survenue. Veuillez réessayer.');
+      return;
+    }
 
     setSubmitted(true);
   };
@@ -246,14 +290,83 @@ export function SimpleContactPage({ onBack }: SimpleContactPageProps) {
                   <select
                     id="requestType"
                     value={formData.requestType}
-                    onChange={(e) => setFormData({ ...formData, requestType: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, requestType: e.target.value, schoolLevel: '', matiere: '' })}
                     className="w-full px-3 py-2 border rounded-md"
                     style={{ borderColor: '#E0E0E0' }}
                   >
-                    <option value="student">Trouver un tuteur pour mon enfant/moi-même</option>
+                    <option value="student">Trouver un tuteur pour mon enfant / moi-même</option>
+                    <option value="tutor">Je souhaite devenir tuteur</option>
                     <option value="info">Demande d'information générale</option>
                   </select>
                 </div>
+
+                {formData.requestType === 'tutor' && (
+                  <>
+                    <div>
+                      <Label htmlFor="matiere">Matière principale que vous enseignez</Label>
+                      <select
+                        id="matiere"
+                        value={formData.matiere}
+                        onChange={(e) => setFormData({ ...formData, matiere: e.target.value })}
+                        className="w-full px-3 py-2 border rounded-md"
+                        style={{ borderColor: '#E0E0E0' }}
+                      >
+                        <option value="">Sélectionnez une matière</option>
+                        {['Mathématiques', 'Physique', 'Chimie', 'Français', 'Anglais', 'Biologie',
+                          'Histoire', 'Géographie', 'Informatique', 'Mentorat', 'Autre'].map((mat) => (
+                          <option key={mat} value={mat}>{mat}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2 block">Niveaux que vous pouvez enseigner</Label>
+                      <div className="flex gap-2 flex-wrap">
+                        {['Primaire', 'Secondaire', 'CÉGEP'].map((level) => (
+                          <button
+                            key={level}
+                            type="button"
+                            onClick={() => toggleTutorLevel(level)}
+                            className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                            style={{
+                              backgroundColor: formData.tutorLevels.includes(level) ? '#E74C3C' : 'white',
+                              borderColor: formData.tutorLevels.includes(level) ? '#E74C3C' : '#E0E0E0',
+                              color: formData.tutorLevels.includes(level) ? 'white' : '#2C3E50',
+                              border: '2px solid',
+                            }}
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2 block">
+                        <Calendar className="inline h-4 w-4 mr-2" style={{ color: '#2E5CA8' }} />
+                        Vos disponibilités dans la semaine
+                      </Label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {joursOptions.map((jour) => (
+                          <button
+                            key={jour}
+                            type="button"
+                            onClick={() => toggleDisponibilite(jour)}
+                            className="px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                            style={{
+                              backgroundColor: formData.disponibilites.includes(jour) ? '#2E5CA8' : 'white',
+                              borderColor: formData.disponibilites.includes(jour) ? '#2E5CA8' : '#E0E0E0',
+                              color: formData.disponibilites.includes(jour) ? 'white' : '#2C3E50',
+                              border: '2px solid',
+                            }}
+                          >
+                            {jour}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {formData.requestType === 'student' && (
                   <>
