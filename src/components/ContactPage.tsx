@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ArrowLeft, Send, CheckCircle, AlertCircle, Mail, Phone, Clock, Calendar } from 'lucide-react';
-import { projectId } from '../utils/supabase/info';
+import { supabase } from '../utils/supabase/client';
 
 interface ContactPageProps {
   onBack: () => void;
@@ -87,20 +87,24 @@ export function ContactPage({ onBack }: ContactPageProps) {
     setSubmitError(false);
 
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-385c5805/contact`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData)
-        }
-      );
+      const fullMessage = [
+        formData.message,
+        formData.heuresParSemaine ? `Heures/semaine souhaitées : ${formData.heuresParSemaine}` : '',
+        formData.disponibilites.length > 0 ? `Disponibilités : ${formData.disponibilites.join(', ')}` : '',
+      ].filter(Boolean).join('\n\n');
 
-      const data = await response.json();
+      const { error } = await supabase.from('contact_messages').insert({
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        school_level: formData.niveau,
+        subjects: formData.matiere ? [formData.matiere] : [],
+        message: fullMessage,
+        status: 'new',
+      });
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors de l\'envoi du message');
-      }
+      if (error) throw error;
 
       setSubmitSuccess(true);
       setFormData({
